@@ -1,46 +1,38 @@
 #include <jni.h>
 #include <string>
-#include <vector>
-#include <sstream>
 
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_gravisat_shield_MainActivity_solveCNF(
-        JNIEnv* env,
-        jobject /* this */,
+        JNIEnv *env,
+        jobject thiz,
         jstring input) {
 
-    const char* raw = env->GetStringUTFChars(input, 0);
+    const char *cnfChars = env->GetStringUTFChars(input, nullptr);
 
-    std::string cnf(raw);
+    std::string cnf(cnfChars);
 
-    env->ReleaseStringUTFChars(input, raw);
+    env->ReleaseStringUTFChars(input, cnfChars);
 
-    // ===== SIMPLE CHECK =====
+    bool positive = false;
+    bool negative = false;
 
-    bool hasPos = false;
-    bool hasNeg = false;
-
-    std::istringstream iss(cnf);
-    std::string line;
-
-    while (std::getline(iss, line)) {
-
-        if (line == "1 0")
-            hasPos = true;
-
-        if (line == "-1 0")
-            hasNeg = true;
+    // SAFE STRING SEARCH
+    if (cnf.find("\n1 0") != std::string::npos ||
+        cnf.find("1 0") != std::string::npos) {
+        positive = true;
     }
 
-    // ===== RESULT =====
+    if (cnf.find("\n-1 0") != std::string::npos ||
+        cnf.find("-1 0") != std::string::npos) {
+        negative = true;
+    }
 
     std::string result;
 
-    if (hasPos && hasNeg) {
+    if (positive && negative) {
         result = "UNSATISFIABLE";
-    }
-    else {
+    } else {
         result = "SATISFIABLE";
     }
 

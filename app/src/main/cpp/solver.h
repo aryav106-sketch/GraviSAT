@@ -18,9 +18,13 @@ private:
 
     bool parseCNF(const std::string& cnf);
 
-    bool dpll(int variable);
+    bool dpll();
 
-    bool checkClauses();
+    bool propagateUnits();
+
+    bool hasConflict();
+
+    bool allClausesSatisfied();
 
 private:
 

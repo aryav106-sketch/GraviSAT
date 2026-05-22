@@ -1,13 +1,14 @@
-#ifndef GRAVISAT_DIMACS_PARSER_H
-#define GRAVISAT_DIMACS_PARSER_H
+#include "dimacs_parser.h"
 
-#include <string>
+bool DimacsParser::validate(const std::string& cnf) {
 
-class DimacsParser {
+    if (cnf.empty()) {
+        return false;
+    }
 
-public:
+    if (cnf.find("p cnf") == std::string::npos) {
+        return false;
+    }
 
-    static bool validate(const std::string& cnf);
-};
-
-#endif
+    return true;
+}

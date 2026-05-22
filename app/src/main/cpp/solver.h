@@ -1,27 +1,26 @@
-#pragma once
+#ifndef GRAVISAT_SOLVER_H
+#define GRAVISAT_SOLVER_H
 
-#include "dimacs_parser.h"
+#include <string>
 #include <vector>
 
 class Solver {
 
 public:
 
-    CNFFormula formula;
+    Solver();
 
-    explicit Solver(const CNFFormula& f);
-
-    bool solve();
+    bool solve(const std::string& cnf);
 
 private:
 
-    std::vector<int> assignment;
+    bool parseCNF(const std::string& cnf);
 
     bool dpll();
 
-    bool isSatisfied();
+private:
 
-    bool hasConflict();
-
-    int chooseVariable();
+    int variables;
+    int clauses;
 };
+#endif

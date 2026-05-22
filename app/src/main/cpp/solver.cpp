@@ -29,10 +29,10 @@ bool Solver::parseCNF(const std::string& cnf) {
 
             std::stringstream header(line);
 
-            std::string tmp;
+            std::string temp;
 
-            header >> tmp;
-            header >> tmp;
+            header >> temp;
+            header >> temp;
 
             header >> variables;
             header >> clauses;
@@ -63,45 +63,156 @@ bool Solver::parseCNF(const std::string& cnf) {
     return true;
 }
 
-bool Solver::checkClauses() {
+bool Solver::propagateUnits() {
+
+    bool changed = true;
+
+    while (changed) {
+
+        changed = false;
+
+        for (const auto& clause : clauseDatabase) {
+
+            int unassignedCount = 0;
+
+            int lastLiteral = 0;
+
+            bool clauseSatisfied = false;
+
+            for (int literal : clause) {
+
+                int variable = std::abs(literal);
+
+                int value = assignment[variable];
+
+                if (value == -1) {
+
+                    unassignedCount++;
+                    lastLiteral = literal;
+                }
+                else {
+
+                    if ((literal > 0 && value == 1) ||
+                        (literal < 0 && value == 0)) {
+
+                        clauseSatisfied = true;
+                        break;
+                    }
+                }
+            }
+
+            if (clauseSatisfied)
+                continue;
+
+            if (unassignedCount == 0)
+                return false;
+
+            if (unassignedCount == 1) {
+
+                int variable = std::abs(lastLiteral);
+
+                assignment[variable] =
+                        (lastLiteral > 0) ? 1 : 0;
+
+                changed = true;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool Solver::hasConflict() {
 
     for (const auto& clause : clauseDatabase) {
 
-        bool clauseSatisfied = false;
+        bool satisfied = false;
+
+        bool undecided = false;
 
         for (int literal : clause) {
 
             int variable = std::abs(literal);
 
-            bool value = assignment[variable];
+            int value = assignment[variable];
 
-            if (literal > 0 && value == true)
-                clauseSatisfied = true;
+            if (value == -1)
+                undecided = true;
 
-            if (literal < 0 && value == false)
-                clauseSatisfied = true;
+            if ((literal > 0 && value == 1) ||
+                (literal < 0 && value == 0)) {
+
+                satisfied = true;
+            }
         }
 
-        if (!clauseSatisfied)
+        if (!satisfied && !undecided)
+            return true;
+    }
+
+    return false;
+}
+
+bool Solver::allClausesSatisfied() {
+
+    for (const auto& clause : clauseDatabase) {
+
+        bool satisfied = false;
+
+        for (int literal : clause) {
+
+            int variable = std::abs(literal);
+
+            int value = assignment[variable];
+
+            if ((literal > 0 && value == 1) ||
+                (literal < 0 && value == 0)) {
+
+                satisfied = true;
+                break;
+            }
+        }
+
+        if (!satisfied)
             return false;
     }
 
     return true;
 }
 
-bool Solver::dpll(int variable) {
+bool Solver::dpll() {
 
-    if (variable > variables)
-        return checkClauses();
+    if (!propagateUnits())
+        return false;
 
-    assignment[variable] = true;
+    if (hasConflict())
+        return false;
 
-    if (dpll(variable + 1))
+    if (allClausesSatisfied())
         return true;
 
-    assignment[variable] = false;
+    int variable = -1;
 
-    if (dpll(variable + 1))
+    for (int i = 1; i <= variables; i++) {
+
+        if (assignment[i] == -1) {
+
+            variable = i;
+            break;
+        }
+    }
+
+    if (variable == -1)
+        return false;
+
+    assignment[variable] = 1;
+
+    if (dpll())
+        return true;
+
+    assignment[variable] = 0;
+
+    if (dpll())
         return true;
 
     assignment[variable] = -1;
@@ -113,28 +224,30 @@ bool Solver::solve(const std::string& cnf) {
 
     parseCNF(cnf);
 
-    return dpll(1);
+    return dpll();
 }
 
 std::string Solver::getSolution() {
 
-    std::string result;
+    std::string output;
 
     for (int i = 1; i <= variables; i++) {
 
-        result += "x";
+        output += "x";
 
-        result += std::to_string(i);
+        output += std::to_string(i);
 
-        result += " = ";
+        output += " = ";
 
-        if (assignment[i])
-            result += "TRUE";
+        if (assignment[i] == 1)
+            output += "TRUE";
+        else if (assignment[i] == 0)
+            output += "FALSE";
         else
-            result += "FALSE";
+            output += "UNASSIGNED";
 
-        result += "\n";
+        output += "\n";
     }
 
-    return result;
+    return output;
 }

@@ -23,4 +23,5 @@ private:
     int variables;
     int clauses;
 };
+
 #endif

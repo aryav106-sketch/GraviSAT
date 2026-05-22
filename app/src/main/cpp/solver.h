@@ -2,7 +2,6 @@
 #define GRAVISAT_SOLVER_H
 
 #include <string>
-#include <vector>
 
 class Solver {
 
@@ -16,7 +15,7 @@ private:
 
     bool parseCNF(const std::string& cnf);
 
-    bool dpll();
+    bool dpll(const std::string& cnf);
 
 private:
 

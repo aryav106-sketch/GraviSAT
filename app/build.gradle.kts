@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "in.gov.cyber.shield.gravisat"
+    namespace = "com.gravisat.shield"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "in.gov.cyber.shield.gravisat"
+        applicationId = "com.gravisat.shield"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

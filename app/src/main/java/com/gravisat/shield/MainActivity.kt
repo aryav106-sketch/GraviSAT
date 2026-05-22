@@ -8,7 +8,7 @@ import android.widget.TextView
 
 class MainActivity : AppCompatActivity() {
 
-    external fun solveSAT(cnf: String): String
+    external fun solveCNF(input: String): String
 
     companion object {
         init {

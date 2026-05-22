@@ -1,15 +1,13 @@
-#pragma once
+#ifndef GRAVISAT_DIMACS_PARSER_H
+#define GRAVISAT_DIMACS_PARSER_H
 
-#include <vector>
 #include <string>
 
-struct Clause {
-    std::vector<int> literals;
+class DimacsParser {
+
+public:
+
+    static bool validate(const std::string& cnf);
 };
 
-struct CNFFormula {
-    int variables;
-    std::vector<Clause> clauses;
-};
-
-CNFFormula parseDIMACS(const std::string& filename);
+#endif

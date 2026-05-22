@@ -1,38 +1,25 @@
 package com.gravisat.shield
 
-import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import android.os.Bundle
+import android.widget.TextView
 
 class MainActivity : AppCompatActivity() {
 
-    external fun solveSAT(input: String): String
-
-    companion object {
-
-        init {
-            System.loadLibrary("gravisat")
-        }
-    }
+    external fun stringFromJNI(): String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContentView(R.layout.activity_main)
+        val tv = TextView(this)
+        tv.text = stringFromJNI()
 
-        val inputCNF = findViewById<EditText>(R.id.inputCNF)
-        val solveButton = findViewById<Button>(R.id.solveButton)
-        val resultText = findViewById<TextView>(R.id.resultText)
+        setContentView(tv)
+    }
 
-        solveButton.setOnClickListener {
-
-            val cnf = inputCNF.text.toString()
-
-            val result = solveSAT(cnf)
-
-            resultText.text = result
+    companion object {
+        init {
+            System.loadLibrary("gravisat")
         }
     }
 }

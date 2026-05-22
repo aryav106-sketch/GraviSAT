@@ -1,32 +1,8 @@
-#include <jni.h>
-#include <string>
-#include "solver.h"
+Solver solver;
 
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_com_gravisat_shield_MainActivity_solveSAT(
-        JNIEnv* env,
-        jobject,
-        jstring input) {
+bool result = solver.solve(cnf);
 
-    const char* rawText =
-            env->GetStringUTFChars(input, nullptr);
-
-    std::string cnf(rawText);
-
-    env->ReleaseStringUTFChars(input, rawText);
-
-    Solver solver;
-
-    bool result = solver.solve(cnf);
-
-    std::string output;
-
-    if (result) {
-        output = "SATISFIABLE";
-    } else {
-        output = "UNSATISFIABLE";
-    }
-
-    return env->NewStringUTF(output.c_str());
-}
+if(result)
+    return env->NewStringUTF("SATISFIABLE");
+else
+    return env->NewStringUTF("UNSATISFIABLE");

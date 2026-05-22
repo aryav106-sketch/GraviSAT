@@ -5,6 +5,7 @@ project(gravisat)
 add_library(
     gravisat
     SHARED
+    gravisat_jni.cpp
     gravisat_core.cpp
     solver.cpp
     dimacs_parser.cpp

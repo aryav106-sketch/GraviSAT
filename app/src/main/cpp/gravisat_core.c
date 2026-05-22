@@ -33,8 +33,9 @@ static int32_t execute_parallel_gpu_npu_solver(double price, double resistance, 
     return verdict;
 }
 
+/* JNI function name matches new package: com.gravisat.shield.MainActivity */
 JNIEXPORT jint JNICALL
-Java_in_gov_cyber_shield_gravisat_MainActivity_executeQuantScan(
+Java_com_gravisat_shield_MainActivity_executeQuantScan(
     JNIEnv* env, jobject this_obj, jdouble price, jdouble resistance, jdouble volatility
 ) {
     (void)env;

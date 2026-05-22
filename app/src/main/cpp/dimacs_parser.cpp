@@ -1,14 +1,5 @@
 #include "dimacs_parser.h"
 
-bool DimacsParser::validate(const std::string& cnf) {
-
-    if (cnf.empty()) {
-        return false;
-    }
-
-    if (cnf.find("p cnf") == std::string::npos) {
-        return false;
-    }
-
+bool DimacsParser::parse(const std::string& file) {
     return true;
 }

@@ -1,36 +1,12 @@
-#include <jni.h>
-#include "dimacs_parser.h"
-#include "solver.h"
+#include <android/log.h>
 
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_in_gravisat_MainActivity_runNativeSATSolver(
-        JNIEnv* env,
-        jobject /* this */) {
+#define LOG_TAG "GraviSAT"
 
-    CNFFormula formula;
+void gravisat_init() {
 
-    formula.variables = 3;
-
-    Clause c1;
-    c1.literals = {1, -2};
-
-    Clause c2;
-    c2.literals = {2, 3};
-
-    formula.clauses.push_back(c1);
-    formula.clauses.push_back(c2);
-
-    Solver solver(formula);
-
-    bool result = solver.solve();
-
-    const char* output;
-
-    if (result)
-        output = "SATISFIABLE";
-    else
-        output = "UNSATISFIABLE";
-
-    return env->NewStringUTF(output);
+    __android_log_print(
+            ANDROID_LOG_INFO,
+            LOG_TAG,
+            "GraviSAT v3.0 Initialized"
+    );
 }

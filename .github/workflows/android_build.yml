@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -23,24 +24,14 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # FIXED: Removed "Generate Gradle Wrapper" step that called system `gradle` binary.
-      # gradle-wrapper.jar + gradlew are now committed in the repo under gradle/wrapper/.
-      # No system gradle binary is required — ./gradlew bootstraps itself automatically.
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Grant Execute Permission to gradlew
+      - name: Grant Execute Permission
         run: chmod +x gradlew
 
-      # FIXED: Was `gradle assembleDebug` (system binary, not pinned version).
-      # Now uses `./gradlew` which reads gradle-wrapper.properties and downloads
-      # exactly Gradle 8.2 — reproducible across all environments.
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+      - name: Build APK
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GraviSAT-debug-apk
+          name: gravisat-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-          

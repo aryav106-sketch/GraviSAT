@@ -1,0 +1,46 @@
+name: GraviSAT Android Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # FIXED: Removed "Generate Gradle Wrapper" step that called system `gradle` binary.
+      # gradle-wrapper.jar + gradlew are now committed in the repo under gradle/wrapper/.
+      # No system gradle binary is required — ./gradlew bootstraps itself automatically.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant Execute Permission to gradlew
+        run: chmod +x gradlew
+
+      # FIXED: Was `gradle assembleDebug` (system binary, not pinned version).
+      # Now uses `./gradlew` which reads gradle-wrapper.properties and downloads
+      # exactly Gradle 8.2 — reproducible across all environments.
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GraviSAT-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          

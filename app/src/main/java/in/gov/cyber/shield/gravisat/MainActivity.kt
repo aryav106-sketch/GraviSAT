@@ -1,4 +1,4 @@
-package in.gov.cyber.shield.gravisat
+package com.gravisat.shield
 
 import android.os.Bundle
 import android.widget.Button

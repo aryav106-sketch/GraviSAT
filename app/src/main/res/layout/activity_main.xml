@@ -2,28 +2,43 @@
 
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+
     android:orientation="vertical"
+
     android:padding="16dp">
 
     <EditText
-        android:id="@+id/inputCNF"
+        android:id="@+id/cnfInput"
+
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter DIMACS CNF" />
+
+        android:minHeight="200dp"
+
+        android:gravity="top"
+
+        android:hint="Enter DIMACS CNF"
+
+        android:text="p cnf 1 1&#10;1 0"/>
 
     <Button
         android:id="@+id/solveButton"
+
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Solve SAT" />
+
+        android:text="RUN GRAVISAT"/>
 
     <TextView
         android:id="@+id/resultText"
+
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textSize="20sp"
-        android:paddingTop="20dp" />
 
+        android:textSize="22sp"
+
+        android:paddingTop="20dp"/>
 </LinearLayout>

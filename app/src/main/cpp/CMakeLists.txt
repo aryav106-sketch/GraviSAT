@@ -12,6 +12,10 @@ add_library(
         gravisat_core.cpp
         solver.cpp
         dimacs_parser.cpp
+        watcher.cpp
+        vsids.cpp
+        clause.cpp
+        analyzer.cpp
 )
 
 find_library(

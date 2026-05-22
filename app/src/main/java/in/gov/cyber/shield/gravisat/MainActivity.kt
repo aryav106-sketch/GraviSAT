@@ -61,3 +61,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+external fun solveSAT(input: String): String
+
+companion object {
+    init {
+        System.loadLibrary("gravisat")
+    }
+}

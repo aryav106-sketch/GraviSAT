@@ -7,7 +7,7 @@ class DimacsParser {
 
 public:
 
-    bool parse(const std::string& file);
+    bool parse(const std::string& cnf);
 };
 
 #endif

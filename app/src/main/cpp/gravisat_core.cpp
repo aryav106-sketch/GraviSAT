@@ -1,40 +1,38 @@
 #include <jni.h>
 #include <string>
 
+#include "solver.h"
+
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_gravisat_shield_MainActivity_solveCNF(
         JNIEnv *env,
-        jobject thiz,
+        jobject,
         jstring input) {
 
-    const char *cnfChars = env->GetStringUTFChars(input, nullptr);
+    const char *rawText =
+            env->GetStringUTFChars(input, nullptr);
 
-    std::string cnf(cnfChars);
+    std::string cnf(rawText);
 
-    env->ReleaseStringUTFChars(input, cnfChars);
+    env->ReleaseStringUTFChars(input, rawText);
 
-    bool positive = false;
-    bool negative = false;
+    Solver solver;
 
-    // SAFE STRING SEARCH
-    if (cnf.find("\n1 0") != std::string::npos ||
-        cnf.find("1 0") != std::string::npos) {
-        positive = true;
-    }
+    bool sat = solver.solve(cnf);
 
-    if (cnf.find("\n-1 0") != std::string::npos ||
-        cnf.find("-1 0") != std::string::npos) {
-        negative = true;
-    }
+    std::string output;
 
-    std::string result;
+    if (sat) {
 
-    if (positive && negative) {
-        result = "UNSATISFIABLE";
+        output = "SATISFIABLE\n\n";
+
+        output += solver.getSolution();
+
     } else {
-        result = "SATISFIABLE";
+
+        output = "UNSATISFIABLE";
     }
 
-    return env->NewStringUTF(result.c_str());
+    return env->NewStringUTF(output.c_str());
 }

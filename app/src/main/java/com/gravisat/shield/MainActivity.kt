@@ -24,10 +24,13 @@ class MainActivity : AppCompatActivity() {
         val solveButton = findViewById<Button>(R.id.solveButton)
         val resultView = findViewById<TextView>(R.id.resultView)
 
-        solveButton.setOnClickListener {
-            val cnf = cnfInput.text.toString()
-            val result = solveSAT(cnf)
-            resultView.text = result
-        }
+        btnSolve.setOnClickListener {
+
+    val input = cnfInput.text.toString()
+
+    val result = solveCNF(input)
+
+    txtResult.text = result
+}
     }
 }

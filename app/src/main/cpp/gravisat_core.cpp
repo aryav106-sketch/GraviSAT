@@ -1,12 +1,13 @@
-#include <android/log.h>
+#include <jni.h>
+#include <string>
 
-#define LOG_TAG "GraviSAT"
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_gravisat_shield_MainActivity_stringFromJNI(
+        JNIEnv* env,
+        jobject /* this */) {
 
-void gravisat_init() {
+    std::string hello = "GraviSAT v3.1 Native Engine";
 
-    __android_log_print(
-            ANDROID_LOG_INFO,
-            LOG_TAG,
-            "GraviSAT v3.0 Initialized"
-    );
+    return env->NewStringUTF(hello.c_str());
 }

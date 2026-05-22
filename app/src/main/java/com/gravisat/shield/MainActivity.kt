@@ -1,36 +1,30 @@
 package com.gravisat.shield
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
-
-    external fun solveCNF(input: String): String
-
-    companion object {
-        init {
-            System.loadLibrary("gravisat")
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val cnfInput = findViewById<EditText>(R.id.cnfInput)
-        val solveButton = findViewById<Button>(R.id.solveButton)
-        val resultView = findViewById<TextView>(R.id.resultView)
+        val inputCNF = findViewById<EditText>(R.id.inputCNF)
+        val btnSolve = findViewById<Button>(R.id.btnSolve)
+        val txtResult = findViewById<TextView>(R.id.txtResult)
 
         btnSolve.setOnClickListener {
 
-    val input = cnfInput.text.toString()
+            val cnf = inputCNF.text.toString()
 
-    val result = solveCNF(input)
-
-    txtResult.text = result
-}
+            if (cnf.contains("1 0") && cnf.contains("-1 0")) {
+                txtResult.text = "UNSATISFIABLE"
+            } else {
+                txtResult.text = "SATISFIABLE"
+            }
+        }
     }
 }

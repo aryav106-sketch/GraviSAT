@@ -46,24 +46,33 @@ bool Solver::parseCNF(const std::string& cnf) {
 
         int literal;
 
-        std::vector<int> clause;
+        Clause clause;
 
         while (clauseStream >> literal) {
 
             if (literal == 0)
                 break;
 
-            clause.push_back(literal);
+            clause.literals.push_back(literal);
         }
 
-        if (!clause.empty())
+        if (!clause.literals.empty()) {
+
+            clause.watch1 = 0;
+
+            if (clause.literals.size() > 1)
+                clause.watch2 = 1;
+            else
+                clause.watch2 = 0;
+
             clauseDatabase.push_back(clause);
+        }
     }
 
     return true;
 }
 
-bool Solver::propagateUnits() {
+bool Solver::propagate() {
 
     bool changed = true;
 
@@ -71,15 +80,15 @@ bool Solver::propagateUnits() {
 
         changed = false;
 
-        for (const auto& clause : clauseDatabase) {
+        for (auto& clause : clauseDatabase) {
 
-            int unassignedCount = 0;
+            bool satisfied = false;
+
+            int unassigned = 0;
 
             int lastLiteral = 0;
 
-            bool clauseSatisfied = false;
-
-            for (int literal : clause) {
+            for (int literal : clause.literals) {
 
                 int variable = std::abs(literal);
 
@@ -87,7 +96,7 @@ bool Solver::propagateUnits() {
 
                 if (value == -1) {
 
-                    unassignedCount++;
+                    unassigned++;
                     lastLiteral = literal;
                 }
                 else {
@@ -95,19 +104,19 @@ bool Solver::propagateUnits() {
                     if ((literal > 0 && value == 1) ||
                         (literal < 0 && value == 0)) {
 
-                        clauseSatisfied = true;
+                        satisfied = true;
                         break;
                     }
                 }
             }
 
-            if (clauseSatisfied)
+            if (satisfied)
                 continue;
 
-            if (unassignedCount == 0)
+            if (unassigned == 0)
                 return false;
 
-            if (unassignedCount == 1) {
+            if (unassigned == 1) {
 
                 int variable = std::abs(lastLiteral);
 
@@ -130,7 +139,7 @@ bool Solver::hasConflict() {
 
         bool undecided = false;
 
-        for (int literal : clause) {
+        for (int literal : clause.literals) {
 
             int variable = std::abs(literal);
 
@@ -153,13 +162,13 @@ bool Solver::hasConflict() {
     return false;
 }
 
-bool Solver::allClausesSatisfied() {
+bool Solver::allSatisfied() {
 
     for (const auto& clause : clauseDatabase) {
 
         bool satisfied = false;
 
-        for (int literal : clause) {
+        for (int literal : clause.literals) {
 
             int variable = std::abs(literal);
 
@@ -180,27 +189,29 @@ bool Solver::allClausesSatisfied() {
     return true;
 }
 
+int Solver::chooseVariable() {
+
+    for (int i = 1; i <= variables; i++) {
+
+        if (assignment[i] == -1)
+            return i;
+    }
+
+    return -1;
+}
+
 bool Solver::dpll() {
 
-    if (!propagateUnits())
+    if (!propagate())
         return false;
 
     if (hasConflict())
         return false;
 
-    if (allClausesSatisfied())
+    if (allSatisfied())
         return true;
 
-    int variable = -1;
-
-    for (int i = 1; i <= variables; i++) {
-
-        if (assignment[i] == -1) {
-
-            variable = i;
-            break;
-        }
-    }
+    int variable = chooseVariable();
 
     if (variable == -1)
         return false;

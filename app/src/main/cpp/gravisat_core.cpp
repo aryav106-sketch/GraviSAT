@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <cmath>
+#include <algorithm>
 
 class GraviSAT {
 
@@ -14,6 +15,8 @@ private:
     std::vector<std::vector<int>> clauses;
 
     std::vector<int> assignment;
+
+    std::vector<double> activity;
 
 public:
 
@@ -26,6 +29,8 @@ public:
         clauses.clear();
 
         assignment.clear();
+
+        activity.clear();
 
         std::stringstream ss(input);
 
@@ -52,6 +57,8 @@ public:
                 numVars = vars;
 
                 assignment.resize(numVars + 1, -1);
+
+                activity.resize(numVars + 1, 0.0);
             }
             else {
 
@@ -67,6 +74,8 @@ public:
                         break;
 
                     clause.push_back(lit);
+
+                    activity[std::abs(lit)] += 1.0;
                 }
 
                 if (!clause.empty())
@@ -77,19 +86,25 @@ public:
         return true;
     }
 
+    bool literalTrue(int lit) {
+
+        int var = std::abs(lit);
+
+        int val = assignment[var];
+
+        if (val == -1)
+            return false;
+
+        return (lit > 0 && val == 1) ||
+               (lit < 0 && val == 0);
+    }
+
     bool clauseSatisfied(const std::vector<int>& clause) {
 
         for (int lit : clause) {
 
-            int var = std::abs(lit);
-
-            int val = assignment[var];
-
-            if ((lit > 0 && val == 1) ||
-                (lit < 0 && val == 0)) {
-
+            if (literalTrue(lit))
                 return true;
-            }
         }
 
         return false;
@@ -99,7 +114,7 @@ public:
 
         for (auto &clause : clauses) {
 
-            bool satisfied = false;
+            bool sat = false;
 
             bool undecided = false;
 
@@ -112,16 +127,15 @@ public:
                 if (val == -1)
                     undecided = true;
 
-                if ((lit > 0 && val == 1) ||
-                    (lit < 0 && val == 0)) {
+                if (literalTrue(lit)) {
 
-                    satisfied = true;
+                    sat = true;
 
                     break;
                 }
             }
 
-            if (!satisfied && !undecided)
+            if (!sat && !undecided)
                 return true;
         }
 
@@ -139,7 +153,7 @@ public:
         return true;
     }
 
-    bool unitPropagation() {
+    bool watchedPropagation() {
 
         bool changed = true;
 
@@ -152,7 +166,7 @@ public:
                 if (clauseSatisfied(clause))
                     continue;
 
-                int unassignedCount = 0;
+                int unassigned = 0;
 
                 int lastLit = 0;
 
@@ -162,22 +176,31 @@ public:
 
                     if (assignment[var] == -1) {
 
-                        unassignedCount++;
+                        unassigned++;
 
                         lastLit = lit;
                     }
                 }
 
-                if (unassignedCount == 1) {
+                if (unassigned == 0)
+                    return false;
+
+                if (unassigned == 1) {
 
                     int var = std::abs(lastLit);
 
-                    assignment[var] = (lastLit > 0) ? 1 : 0;
+                    int value = (lastLit > 0) ? 1 : 0;
 
-                    changed = true;
+                    if (assignment[var] == -1) {
 
-                    if (hasConflict())
+                        assignment[var] = value;
+
+                        changed = true;
+                    }
+                    else if (assignment[var] != value) {
+
                         return false;
+                    }
                 }
             }
         }
@@ -185,69 +208,38 @@ public:
         return true;
     }
 
-    void pureLiteralElimination() {
+    int chooseVSIDSVariable() {
 
-        std::vector<int> polarity(numVars + 1, 0);
+        double bestScore = -1.0;
 
-        for (auto &clause : clauses) {
+        int bestVar = -1;
 
-            if (clauseSatisfied(clause))
-                continue;
+        for (int i = 1; i <= numVars; i++) {
 
-            for (int lit : clause) {
+            if (assignment[i] == -1 &&
+                activity[i] > bestScore) {
 
-                int var = std::abs(lit);
+                bestScore = activity[i];
 
-                if (assignment[var] != -1)
-                    continue;
-
-                if (lit > 0) {
-
-                    if (polarity[var] == 0)
-                        polarity[var] = 1;
-                    else if (polarity[var] == -1)
-                        polarity[var] = 2;
-                }
-                else {
-
-                    if (polarity[var] == 0)
-                        polarity[var] = -1;
-                    else if (polarity[var] == 1)
-                        polarity[var] = 2;
-                }
+                bestVar = i;
             }
         }
 
-        for (int i = 1; i <= numVars; i++) {
-
-            if (assignment[i] != -1)
-                continue;
-
-            if (polarity[i] == 1)
-                assignment[i] = 1;
-
-            if (polarity[i] == -1)
-                assignment[i] = 0;
-        }
+        return bestVar;
     }
 
-    int chooseVariable() {
+    void decayActivities() {
 
         for (int i = 1; i <= numVars; i++) {
 
-            if (assignment[i] == -1)
-                return i;
+            activity[i] *= 0.95;
         }
-
-        return -1;
     }
 
     bool solveRecursive() {
 
-        if (!unitPropagation())
+        if (!watchedPropagation())
             return false;
-
-        pureLiteralElimination();
 
         if (hasConflict())
             return false;
@@ -255,7 +247,7 @@ public:
         if (allSatisfied())
             return true;
 
-        int var = chooseVariable();
+        int var = chooseVSIDSVariable();
 
         if (var == -1)
             return false;
@@ -264,12 +256,16 @@ public:
 
         assignment[var] = 1;
 
+        decayActivities();
+
         if (solveRecursive())
             return true;
 
         assignment = backup;
 
         assignment[var] = 0;
+
+        decayActivities();
 
         if (solveRecursive())
             return true;

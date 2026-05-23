@@ -51,6 +51,8 @@ private:
 
     std::vector<double> varActivity;
 
+    std::vector<int> savedPhase;
+
     std::queue<int> propagationQueue;
 
 public:
@@ -82,14 +84,15 @@ public:
         c.watch1 = 0;
 
         c.watch2 =
-                (lits.size() > 1) ? 1 : 0;
+            (lits.size() > 1) ? 1 : 0;
 
         c.activity = 1.0;
 
         return c;
     }
 
-    bool parseDIMACS(const std::string &input) {
+    bool parseDIMACS(
+            const std::string &input) {
 
         clauses.clear();
 
@@ -98,6 +101,8 @@ public:
         vars.clear();
 
         varActivity.clear();
+
+        savedPhase.clear();
 
         std::stringstream ss(input);
 
@@ -119,14 +124,20 @@ public:
 
                 int cls;
 
-                ls >> tmp >> tmp
-                   >> numVars >> cls;
+                ls >> tmp
+                   >> tmp
+                   >> numVars
+                   >> cls;
 
                 vars.resize(numVars + 1);
 
                 varActivity.resize(
                         numVars + 1,
                         0.0);
+
+                savedPhase.resize(
+                        numVars + 1,
+                        1);
 
                 for (int i = 1;
                      i <= numVars;
@@ -155,13 +166,13 @@ public:
                     lits.push_back(lit);
 
                     varActivity[
-                            std::abs(lit)] += 1.0;
+                        std::abs(lit)] += 1.0;
                 }
 
                 if (!lits.empty()) {
 
                     clauses.push_back(
-                            makeClause(lits));
+                        makeClause(lits));
                 }
             }
         }
@@ -205,7 +216,7 @@ public:
         int var = std::abs(lit);
 
         int value =
-                (lit > 0) ? 1 : 0;
+            (lit > 0) ? 1 : 0;
 
         if (vars[var].value != -1) {
 
@@ -219,6 +230,8 @@ public:
 
         vars[var].reason = reason;
 
+        savedPhase[var] = value;
+
         propagationQueue.push(var);
 
         propagations++;
@@ -227,8 +240,7 @@ public:
     }
 
     bool propagateClauseSet(
-            std::vector<Clause>& db,
-            bool learned) {
+            std::vector<Clause>& db) {
 
         for (size_t c = 0;
              c < db.size();
@@ -237,12 +249,12 @@ public:
             Clause &clause = db[c];
 
             int lit1 =
-                    clause.lits[
-                            clause.watch1];
+                clause.lits[
+                    clause.watch1];
 
             int lit2 =
-                    clause.lits[
-                            clause.watch2];
+                clause.lits[
+                    clause.watch2];
 
             if (literalTrue(lit1) ||
                 literalTrue(lit2))
@@ -260,7 +272,8 @@ public:
                         clause.watch2)
                     continue;
 
-                int lit = clause.lits[i];
+                int lit =
+                    clause.lits[i];
 
                 if (!literalFalse(lit)) {
 
@@ -285,9 +298,11 @@ public:
 
                 clause.activity += 5.0;
 
-                learnClause(clause.lits);
+                learnClause(
+                        clause.lits);
 
-                if (conflicts >= restartLimit) {
+                if (conflicts >=
+                    restartLimit) {
 
                     restartSearch();
                 }
@@ -326,18 +341,17 @@ public:
 
     bool propagate() {
 
-        while (!propagationQueue.empty()) {
+        while (
+            !propagationQueue.empty()) {
 
             propagationQueue.pop();
 
             if (!propagateClauseSet(
-                    clauses,
-                    false))
+                    clauses))
                 return false;
 
             if (!propagateClauseSet(
-                    learnedClauses,
-                    true))
+                    learnedClauses))
                 return false;
         }
 
@@ -345,7 +359,8 @@ public:
     }
 
     void learnClause(
-            const std::vector<int>& conflict) {
+            const std::vector<int>&
+            conflict) {
 
         std::vector<int> learned;
 
@@ -354,11 +369,11 @@ public:
             learned.push_back(-lit);
 
             varActivity[
-                    std::abs(lit)] += 5.0;
+                std::abs(lit)] += 5.0;
         }
 
         learnedClauses.push_back(
-                makeClause(learned));
+            makeClause(learned));
 
         reduceLearnedClauses();
     }
@@ -374,12 +389,13 @@ public:
             [](const Clause& a,
                const Clause& b) {
 
-                return a.activity >
-                       b.activity;
+                return
+                    a.activity >
+                    b.activity;
             });
 
         learnedClauses.resize(
-                learnedClauses.size() / 2);
+            learnedClauses.size() / 2);
     }
 
     bool allSatisfied() {
@@ -388,7 +404,8 @@ public:
 
             bool sat = false;
 
-            for (int lit : clause.lits) {
+            for (int lit :
+                 clause.lits) {
 
                 if (literalTrue(lit)) {
 
@@ -436,7 +453,8 @@ public:
             varActivity[i] *= 0.95;
         }
 
-        for (auto &c : learnedClauses) {
+        for (auto &c :
+             learnedClauses) {
 
             c.activity *= 0.90;
         }
@@ -459,7 +477,8 @@ public:
             vars[i].reason = -1;
         }
 
-        while (!propagationQueue.empty())
+        while (
+            !propagationQueue.empty())
             propagationQueue.pop();
 
         restartLimit += 50;
@@ -473,7 +492,8 @@ public:
         if (allSatisfied())
             return true;
 
-        int var = chooseVariable();
+        int var =
+            chooseVariable();
 
         if (var == -1)
             return false;
@@ -482,13 +502,19 @@ public:
 
         currentLevel++;
 
+        int preferred =
+            savedPhase[var];
+
         {
             auto backup = vars;
 
+            int lit =
+                preferred ? var : -var;
+
             assignLiteral(
-                    var,
-                    currentLevel,
-                    -1);
+                lit,
+                currentLevel,
+                -1);
 
             decayActivities();
 
@@ -501,10 +527,13 @@ public:
         {
             auto backup = vars;
 
+            int lit =
+                preferred ? -var : var;
+
             assignLiteral(
-                    -var,
-                    currentLevel,
-                    -1);
+                lit,
+                currentLevel,
+                -1);
 
             decayActivities();
 
@@ -521,7 +550,8 @@ public:
 
     std::string solveSAT() {
 
-        bool sat = solveRecursive();
+        bool sat =
+            solveRecursive();
 
         std::stringstream out;
 
@@ -539,7 +569,8 @@ public:
                  i <= numVars;
                  i++) {
 
-                out << "x"
+                out
+                    << "x"
                     << i
                     << " = ";
 
@@ -583,22 +614,22 @@ Java_com_gravisat_app_MainActivity_solveSAT(
 
     const char *raw =
         env->GetStringUTFChars(
-                inputText,
-                0);
+            inputText,
+            0);
 
     std::string dimacs(raw);
 
     env->ReleaseStringUTFChars(
-            inputText,
-            raw);
+        inputText,
+        raw);
 
     GraviSAT solver;
 
     solver.parseDIMACS(dimacs);
 
     std::string result =
-            solver.solveSAT();
+        solver.solveSAT();
 
     return env->NewStringUTF(
-            result.c_str());
+        result.c_str());
 }

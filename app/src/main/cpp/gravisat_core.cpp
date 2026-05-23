@@ -2,16 +2,19 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include <cstdlib>
+#include <queue>
 #include <cmath>
 #include <algorithm>
-#include <queue>
 
-struct VariableState {
+struct Variable {
 
     int value;
+
     int level;
+
     int reason;
+
+    int polarity;
 };
 
 struct Clause {
@@ -23,17 +26,19 @@ struct Clause {
     int watch2;
 
     double activity;
+
+    bool learned;
+
+    bool removed;
 };
 
 struct TrailEntry {
 
-    int var;
+    int lit;
 
-    int oldValue;
+    int level;
 
-    int oldLevel;
-
-    int oldReason;
+    int reason;
 };
 
 class GraviSAT {
@@ -54,19 +59,25 @@ private:
 
     int restartLimit;
 
+    double varInc;
+
+    double varDecay;
+
+    double clauseInc;
+
+    double clauseDecay;
+
+    std::vector<Variable> vars;
+
+    std::vector<double> activity;
+
     std::vector<Clause> clauses;
-
-    std::vector<Clause> learnedClauses;
-
-    std::vector<VariableState> vars;
-
-    std::vector<double> varActivity;
-
-    std::vector<int> savedPhase;
 
     std::vector<TrailEntry> trail;
 
     std::queue<int> propagationQueue;
+
+    std::vector<std::vector<int>> watchLists;
 
 public:
 
@@ -84,11 +95,28 @@ public:
 
         currentLevel = 0;
 
-        restartLimit = 50;
+        restartLimit = 100;
+
+        varInc = 1.0;
+
+        varDecay = 0.95;
+
+        clauseInc = 1.0;
+
+        clauseDecay = 0.999;
+    }
+
+    int litIndex(int lit) {
+
+        if (lit > 0)
+            return lit * 2;
+
+        return (-lit * 2) + 1;
     }
 
     Clause makeClause(
-            const std::vector<int>& lits) {
+            const std::vector<int>& lits,
+            bool learned = false) {
 
         Clause c;
 
@@ -99,23 +127,66 @@ public:
         c.watch2 =
             (lits.size() > 1) ? 1 : 0;
 
-        c.activity = 1.0;
+        c.activity = 0.0;
+
+        c.learned = learned;
+
+        c.removed = false;
 
         return c;
     }
 
+    void addWatch(
+            int lit,
+            int clauseId) {
+
+        watchLists[
+            litIndex(lit)].push_back(
+                clauseId);
+    }
+
+    void bumpVariableActivity(
+            int var) {
+
+        activity[var] += varInc;
+
+        if (activity[var] > 1e100) {
+
+            for (int i = 1;
+                 i <= numVars;
+                 i++) {
+
+                activity[i] *= 1e-100;
+            }
+
+            varInc *= 1e-100;
+        }
+    }
+
+    void decayVariableActivity() {
+
+        varInc /= varDecay;
+    }
+
+    void bumpClauseActivity(
+            Clause& c) {
+
+        c.activity += clauseInc;
+    }
+
+    void decayClauseActivity() {
+
+        clauseInc /= clauseDecay;
+    }
+
     bool parseDIMACS(
-            const std::string &input) {
+            const std::string& input) {
 
         clauses.clear();
 
-        learnedClauses.clear();
-
         vars.clear();
 
-        varActivity.clear();
-
-        savedPhase.clear();
+        activity.clear();
 
         trail.clear();
 
@@ -146,13 +217,12 @@ public:
 
                 vars.resize(numVars + 1);
 
-                varActivity.resize(
+                activity.resize(
                     numVars + 1,
                     0.0);
 
-                savedPhase.resize(
-                    numVars + 1,
-                    1);
+                watchLists.resize(
+                    (numVars + 1) * 2 + 2);
 
                 for (int i = 1;
                      i <= numVars;
@@ -163,6 +233,8 @@ public:
                     vars[i].level = -1;
 
                     vars[i].reason = -1;
+
+                    vars[i].polarity = 1;
                 }
             }
             else {
@@ -180,14 +252,29 @@ public:
 
                     lits.push_back(lit);
 
-                    varActivity[
+                    activity[
                         std::abs(lit)] += 1.0;
                 }
 
                 if (!lits.empty()) {
 
-                    clauses.push_back(
-                        makeClause(lits));
+                    Clause c =
+                        makeClause(
+                            lits,
+                            false);
+
+                    int id =
+                        clauses.size();
+
+                    clauses.push_back(c);
+
+                    addWatch(
+                        lits[c.watch1],
+                        id);
+
+                    addWatch(
+                        lits[c.watch2],
+                        id);
                 }
             }
         }
@@ -223,7 +310,7 @@ public:
             (lit < 0 && val == 1);
     }
 
-    bool assignLiteral(
+    bool enqueue(
             int lit,
             int level,
             int reason) {
@@ -239,73 +326,64 @@ public:
                 vars[var].value == value;
         }
 
-        trail.push_back({
-
-            var,
-
-            vars[var].value,
-
-            vars[var].level,
-
-            vars[var].reason
-        });
-
         vars[var].value = value;
 
         vars[var].level = level;
 
         vars[var].reason = reason;
 
-        savedPhase[var] = value;
+        vars[var].polarity = value;
 
-        propagationQueue.push(var);
+        trail.push_back({
+            lit,
+            level,
+            reason
+        });
+
+        propagationQueue.push(lit);
 
         propagations++;
 
         return true;
     }
 
-    void rollback(size_t checkpoint) {
+    Clause* propagateLiteral(
+            int lit) {
 
-        while (trail.size() > checkpoint) {
+        int idx =
+            litIndex(-lit);
 
-            auto t = trail.back();
+        auto watchCopy =
+            watchLists[idx];
 
-            vars[t.var].value =
-                t.oldValue;
+        for (int clauseId :
+             watchCopy) {
 
-            vars[t.var].level =
-                t.oldLevel;
+            Clause& clause =
+                clauses[clauseId];
 
-            vars[t.var].reason =
-                t.oldReason;
-
-            trail.pop_back();
-        }
-    }
-
-    bool propagateClauseSet(
-            std::vector<Clause>& db) {
-
-        for (size_t c = 0;
-             c < db.size();
-             c++) {
-
-            Clause &clause = db[c];
-
-            int lit1 =
-                clause.lits[
-                    clause.watch1];
-
-            int lit2 =
-                clause.lits[
-                    clause.watch2];
-
-            if (literalTrue(lit1) ||
-                literalTrue(lit2))
+            if (clause.removed)
                 continue;
 
-            bool moved = false;
+            int watchPos =
+                (clause.lits[
+                    clause.watch1] == -lit)
+                ? clause.watch1
+                : clause.watch2;
+
+            int otherPos =
+                (watchPos ==
+                 clause.watch1)
+                ? clause.watch2
+                : clause.watch1;
+
+            int otherLit =
+                clause.lits[otherPos];
+
+            if (literalTrue(otherLit))
+                continue;
+
+            bool found = false;
 
             for (size_t i = 0;
                  i < clause.lits.size();
@@ -317,126 +395,170 @@ public:
                         clause.watch2)
                     continue;
 
-                int lit =
+                int newLit =
                     clause.lits[i];
 
-                if (!literalFalse(lit)) {
+                if (!literalFalse(
+                        newLit)) {
 
-                    if (literalFalse(lit1))
+                    if (watchPos ==
+                        clause.watch1)
                         clause.watch1 = i;
                     else
                         clause.watch2 = i;
 
-                    moved = true;
+                    addWatch(
+                        newLit,
+                        clauseId);
+
+                    found = true;
 
                     break;
                 }
             }
 
-            if (moved)
+            if (found)
                 continue;
 
-            if (literalFalse(lit1) &&
-                literalFalse(lit2)) {
+            if (literalFalse(
+                    otherLit)) {
 
                 conflicts++;
 
-                clause.activity += 5.0;
+                bumpClauseActivity(
+                    clause);
 
-                learnClause(
-                    clause.lits);
-
-                return false;
+                return &clause;
             }
 
-            if (!literalFalse(lit1)) {
+            if (!enqueue(
+                    otherLit,
+                    currentLevel,
+                    clauseId)) {
 
-                if (!assignLiteral(
-                        lit1,
-                        currentLevel,
-                        (int)c)) {
+                conflicts++;
 
-                    conflicts++;
-
-                    return false;
-                }
-            }
-            else {
-
-                if (!assignLiteral(
-                        lit2,
-                        currentLevel,
-                        (int)c)) {
-
-                    conflicts++;
-
-                    return false;
-                }
+                return &clause;
             }
         }
 
-        return true;
+        return nullptr;
     }
 
-    bool propagate() {
+    Clause* propagate() {
 
         while (
             !propagationQueue.empty()) {
 
+            int lit =
+                propagationQueue.front();
+
             propagationQueue.pop();
 
-            if (!propagateClauseSet(
-                    clauses))
-                return false;
+            Clause* conflict =
+                propagateLiteral(lit);
 
-            if (!propagateClauseSet(
-                    learnedClauses))
-                return false;
+            if (conflict != nullptr)
+                return conflict;
         }
 
-        return true;
+        return nullptr;
     }
 
-    void learnClause(
-            const std::vector<int>&
-            conflict) {
+    std::vector<int> analyzeConflict(
+            Clause* conflictClause,
+            int& backtrackLevel) {
 
         std::vector<int> learned;
 
-        for (int lit : conflict) {
+        int highest = 0;
+
+        int secondHighest = 0;
+
+        for (int lit :
+             conflictClause->lits) {
+
+            int var =
+                std::abs(lit);
+
+            int lvl =
+                vars[var].level;
 
             learned.push_back(-lit);
 
-            varActivity[
-                std::abs(lit)] += 5.0;
+            bumpVariableActivity(var);
+
+            if (lvl > highest) {
+
+                secondHighest =
+                    highest;
+
+                highest = lvl;
+            }
+            else if (
+                lvl > secondHighest &&
+                lvl != highest) {
+
+                secondHighest = lvl;
+            }
         }
 
-        learnedClauses.push_back(
-            makeClause(learned));
+        backtrackLevel =
+            secondHighest;
+
+        return learned;
     }
 
-    bool allSatisfied() {
+    void addLearnedClause(
+            const std::vector<int>& lits) {
 
-        for (auto &clause : clauses) {
+        Clause c =
+            makeClause(
+                lits,
+                true);
 
-            bool sat = false;
+        int id =
+            clauses.size();
 
-            for (int lit :
-                 clause.lits) {
+        clauses.push_back(c);
 
-                if (literalTrue(lit)) {
+        addWatch(
+            lits[c.watch1],
+            id);
 
-                    sat = true;
+        addWatch(
+            lits[c.watch2],
+            id);
+    }
 
-                    break;
-                }
+    void reduceLearnedClauses() {
+
+        if (clauses.size() < 200)
+            return;
+
+        std::sort(
+            clauses.begin(),
+            clauses.end(),
+            [](const Clause& a,
+               const Clause& b) {
+
+                return
+                    a.activity <
+                    b.activity;
+            });
+
+        int removeCount =
+            clauses.size() / 5;
+
+        for (int i = 0;
+             i < removeCount;
+             i++) {
+
+            if (clauses[i].learned) {
+
+                clauses[i].removed = true;
             }
-
-            if (!sat)
-                return false;
         }
-
-        return true;
     }
 
     int chooseVariable() {
@@ -450,9 +572,9 @@ public:
              i++) {
 
             if (vars[i].value == -1 &&
-                varActivity[i] > best) {
+                activity[i] > best) {
 
-                best = varActivity[i];
+                best = activity[i];
 
                 bestVar = i;
             }
@@ -461,92 +583,144 @@ public:
         return bestVar;
     }
 
-    void decayActivities() {
+    void restartSearch() {
+
+        restarts++;
+
+        while (!trail.empty()) {
+
+            auto t = trail.back();
+
+            int var =
+                std::abs(t.lit);
+
+            vars[var].value = -1;
+
+            vars[var].level = -1;
+
+            vars[var].reason = -1;
+
+            trail.pop_back();
+        }
+
+        currentLevel = 0;
+
+        while (
+            !propagationQueue.empty())
+            propagationQueue.pop();
+
+        restartLimit += 100;
+    }
+
+    void backtrack(int level) {
+
+        while (!trail.empty()) {
+
+            auto t = trail.back();
+
+            if (t.level <= level)
+                break;
+
+            int var =
+                std::abs(t.lit);
+
+            vars[var].value = -1;
+
+            vars[var].level = -1;
+
+            vars[var].reason = -1;
+
+            trail.pop_back();
+        }
+
+        currentLevel = level;
+    }
+
+    bool allAssigned() {
 
         for (int i = 1;
              i <= numVars;
              i++) {
 
-            varActivity[i] *= 0.95;
+            if (vars[i].value == -1)
+                return false;
         }
+
+        return true;
     }
 
-    bool solveRecursive() {
+    bool solve() {
 
-        if (!propagate())
-            return false;
+        while (true) {
 
-        if (allSatisfied())
-            return true;
+            Clause* conflict =
+                propagate();
 
-        int var =
-            chooseVariable();
+            if (conflict != nullptr) {
 
-        if (var == -1)
-            return false;
+                if (currentLevel == 0)
+                    return false;
 
-        decisions++;
+                int backtrackLevel;
 
-        currentLevel++;
+                std::vector<int>
+                learned =
+                    analyzeConflict(
+                        conflict,
+                        backtrackLevel);
 
-        int preferred =
-            savedPhase[var];
+                addLearnedClause(
+                    learned);
 
-        size_t checkpoint =
-            trail.size();
+                backtrack(
+                    backtrackLevel);
 
-        {
+                decayVariableActivity();
+
+                decayClauseActivity();
+
+                reduceLearnedClauses();
+
+                if (conflicts >=
+                    restartLimit) {
+
+                    restartSearch();
+                }
+
+                continue;
+            }
+
+            if (allAssigned())
+                return true;
+
+            int var =
+                chooseVariable();
+
+            if (var == -1)
+                return true;
+
+            decisions++;
+
+            currentLevel++;
+
             int lit =
-                preferred ? var : -var;
+                vars[var].polarity
+                ? var
+                : -var;
 
-            assignLiteral(
+            enqueue(
                 lit,
                 currentLevel,
                 -1);
-
-            decayActivities();
-
-            if (solveRecursive())
-                return true;
-
-            rollback(checkpoint);
         }
-
-        {
-            int lit =
-                preferred ? -var : var;
-
-            assignLiteral(
-                lit,
-                currentLevel,
-                -1);
-
-            decayActivities();
-
-            if (solveRecursive())
-                return true;
-
-            rollback(checkpoint);
-        }
-
-        currentLevel--;
-
-        return false;
     }
 
-    std::string solveSAT() {
-
-        bool sat =
-            solveRecursive();
+    std::string resultString(
+            bool sat) {
 
         std::stringstream out;
 
-        if (!sat) {
-
-            out
-                << "UNSATISFIABLE\n\n";
-        }
-        else {
+        if (sat) {
 
             out
                 << "SATISFIABLE\n\n";
@@ -568,14 +742,19 @@ public:
                 out << "\n";
             }
         }
+        else {
+
+            out
+                << "UNSATISFIABLE\n";
+        }
 
         out << "\n";
 
-        out << "Decisions: "
-            << decisions << "\n";
-
         out << "Conflicts: "
             << conflicts << "\n";
+
+        out << "Decisions: "
+            << decisions << "\n";
 
         out << "Propagations: "
             << propagations << "\n";
@@ -583,12 +762,12 @@ public:
         out << "Restarts: "
             << restarts << "\n";
 
-        out << "Trail Size: "
-            << trail.size() << "\n";
-
-        out << "Learned Clauses: "
-            << learnedClauses.size()
+        out << "Clauses: "
+            << clauses.size()
             << "\n";
+
+        out << "Decision Level: "
+            << currentLevel << "\n";
 
         return out.str();
     }
@@ -597,11 +776,11 @@ public:
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_gravisat_app_MainActivity_solveSAT(
-        JNIEnv *env,
+        JNIEnv* env,
         jobject thiz,
         jstring inputText) {
 
-    const char *raw =
+    const char* raw =
         env->GetStringUTFChars(
             inputText,
             0);
@@ -616,8 +795,11 @@ Java_com_gravisat_app_MainActivity_solveSAT(
 
     solver.parseDIMACS(dimacs);
 
+    bool sat =
+        solver.solve();
+
     std::string result =
-        solver.solveSAT();
+        solver.resultString(sat);
 
     return env->NewStringUTF(
         result.c_str());

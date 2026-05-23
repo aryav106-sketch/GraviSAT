@@ -6,11 +6,11 @@
 #include <cmath>
 #include <algorithm>
 
-struct Decision {
+struct Assignment {
 
-    int variable;
     int value;
     int level;
+    int reason;
 };
 
 class GraviSAT {
@@ -23,15 +23,15 @@ private:
 
     int decisionsCount;
 
+    int currentLevel;
+
     std::vector<std::vector<int>> clauses;
 
     std::vector<std::vector<int>> learnedClauses;
 
-    std::vector<int> assignment;
+    std::vector<Assignment> assigns;
 
     std::vector<double> activity;
-
-    std::vector<Decision> trail;
 
 public:
 
@@ -42,6 +42,8 @@ public:
         conflicts = 0;
 
         decisionsCount = 0;
+
+        currentLevel = 0;
     }
 
     bool parseDIMACS(const std::string &input) {
@@ -50,11 +52,9 @@ public:
 
         learnedClauses.clear();
 
-        assignment.clear();
+        assigns.clear();
 
         activity.clear();
-
-        trail.clear();
 
         std::stringstream ss(input);
 
@@ -80,9 +80,16 @@ public:
 
                 numVars = vars;
 
-                assignment.resize(numVars + 1, -1);
+                assigns.resize(numVars + 1);
 
                 activity.resize(numVars + 1, 0.0);
+
+                for (int i = 1; i <= numVars; i++) {
+
+                    assigns[i].value = -1;
+                    assigns[i].level = -1;
+                    assigns[i].reason = -1;
+                }
             }
             else {
 
@@ -114,7 +121,7 @@ public:
 
         int var = std::abs(lit);
 
-        int val = assignment[var];
+        int val = assigns[var].value;
 
         if (val == -1)
             return false;
@@ -123,25 +130,27 @@ public:
                (lit < 0 && val == 0);
     }
 
-    bool clauseSatisfied(const std::vector<int>& clause) {
+    bool literalFalse(int lit) {
 
-        for (int lit : clause) {
+        int var = std::abs(lit);
 
-            if (literalTrue(lit))
-                return true;
-        }
+        int val = assigns[var].value;
 
-        return false;
+        if (val == -1)
+            return false;
+
+        return (lit > 0 && val == 0) ||
+               (lit < 0 && val == 1);
     }
 
-    bool processClauseSet(
+    bool propagateDatabase(
             std::vector<std::vector<int>>& db) {
 
-        for (auto &clause : db) {
+        for (size_t c = 0; c < db.size(); c++) {
+
+            auto &clause = db[c];
 
             bool satisfied = false;
-
-            bool undecided = false;
 
             int unassigned = 0;
 
@@ -149,50 +158,77 @@ public:
 
             for (int lit : clause) {
 
-                int var = std::abs(lit);
-
-                int val = assignment[var];
-
-                if (val == -1) {
-
-                    undecided = true;
-
-                    unassigned++;
-
-                    lastLit = lit;
-                }
-
                 if (literalTrue(lit)) {
 
                     satisfied = true;
 
                     break;
                 }
+
+                int var = std::abs(lit);
+
+                if (assigns[var].value == -1) {
+
+                    unassigned++;
+
+                    lastLit = lit;
+                }
             }
 
-            if (!satisfied && !undecided) {
+            if (satisfied)
+                continue;
+
+            if (unassigned == 0) {
 
                 conflicts++;
 
-                learnConflictClause(clause);
+                learnClause(clause);
 
                 return false;
             }
 
-            if (!satisfied && unassigned == 1) {
+            if (unassigned == 1) {
 
                 int var = std::abs(lastLit);
 
                 int value = (lastLit > 0) ? 1 : 0;
 
-                assignment[var] = value;
+                assigns[var].value = value;
+
+                assigns[var].level = currentLevel;
+
+                assigns[var].reason = (int)c;
             }
         }
 
         return true;
     }
 
-    void learnConflictClause(
+    bool propagate() {
+
+        bool changed = true;
+
+        while (changed) {
+
+            changed = false;
+
+            size_t before =
+                    learnedClauses.size();
+
+            if (!propagateDatabase(clauses))
+                return false;
+
+            if (!propagateDatabase(learnedClauses))
+                return false;
+
+            if (learnedClauses.size() != before)
+                changed = true;
+        }
+
+        return true;
+    }
+
+    void learnClause(
             const std::vector<int>& conflictClause) {
 
         std::vector<int> learned;
@@ -207,41 +243,23 @@ public:
         learnedClauses.push_back(learned);
     }
 
-    bool propagate() {
-
-        bool changed = true;
-
-        while (changed) {
-
-            changed = false;
-
-            size_t before =
-                    learnedClauses.size();
-
-            if (!processClauseSet(clauses))
-                return false;
-
-            if (!processClauseSet(learnedClauses))
-                return false;
-
-            if (learnedClauses.size() != before)
-                changed = true;
-        }
-
-        return true;
-    }
-
     bool allSatisfied() {
 
         for (auto &clause : clauses) {
 
-            if (!clauseSatisfied(clause))
-                return false;
-        }
+            bool sat = false;
 
-        for (auto &clause : learnedClauses) {
+            for (int lit : clause) {
 
-            if (!clauseSatisfied(clause))
+                if (literalTrue(lit)) {
+
+                    sat = true;
+
+                    break;
+                }
+            }
+
+            if (!sat)
                 return false;
         }
 
@@ -250,16 +268,16 @@ public:
 
     int chooseVariable() {
 
-        double bestScore = -1.0;
+        double best = -1.0;
 
         int bestVar = -1;
 
         for (int i = 1; i <= numVars; i++) {
 
-            if (assignment[i] == -1 &&
-                activity[i] > bestScore) {
+            if (assigns[i].value == -1 &&
+                activity[i] > best) {
 
-                bestScore = activity[i];
+                best = activity[i];
 
                 bestVar = i;
             }
@@ -276,7 +294,22 @@ public:
         }
     }
 
-    bool solveRecursive(int level) {
+    void backtrack(int level) {
+
+        for (int i = 1; i <= numVars; i++) {
+
+            if (assigns[i].level > level) {
+
+                assigns[i].value = -1;
+                assigns[i].level = -1;
+                assigns[i].reason = -1;
+            }
+        }
+
+        currentLevel = level;
+    }
+
+    bool solveRecursive() {
 
         if (!propagate())
             return false;
@@ -291,46 +324,44 @@ public:
 
         decisionsCount++;
 
+        currentLevel++;
+
         {
-            auto backup = assignment;
+            auto backup = assigns;
 
-            assignment[var] = 1;
-
-            trail.push_back({var, 1, level});
+            assigns[var].value = 1;
+            assigns[var].level = currentLevel;
 
             decayActivities();
 
-            if (solveRecursive(level + 1))
+            if (solveRecursive())
                 return true;
 
-            assignment = backup;
-
-            trail.pop_back();
+            assigns = backup;
         }
 
         {
-            auto backup = assignment;
+            auto backup = assigns;
 
-            assignment[var] = 0;
-
-            trail.push_back({var, 0, level});
+            assigns[var].value = 0;
+            assigns[var].level = currentLevel;
 
             decayActivities();
 
-            if (solveRecursive(level + 1))
+            if (solveRecursive())
                 return true;
 
-            assignment = backup;
-
-            trail.pop_back();
+            assigns = backup;
         }
+
+        backtrack(currentLevel - 1);
 
         return false;
     }
 
     std::string solveSAT() {
 
-        bool sat = solveRecursive(0);
+        bool sat = solveRecursive();
 
         std::stringstream out;
 
@@ -346,7 +377,7 @@ public:
 
                 out << "x" << i << " = ";
 
-                if (assignment[i] == 1)
+                if (assigns[i].value == 1)
                     out << "TRUE";
                 else
                     out << "FALSE";
@@ -364,6 +395,9 @@ public:
 
         out << "Learned Clauses: "
             << learnedClauses.size() << "\n";
+
+        out << "Decision Level: "
+            << currentLevel << "\n";
 
         return out.str();
     }

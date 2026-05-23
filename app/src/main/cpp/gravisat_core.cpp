@@ -23,9 +23,9 @@ private:
 
     int decisionsCount;
 
-    int restartThreshold;
-
     std::vector<std::vector<int>> clauses;
+
+    std::vector<std::vector<int>> learnedClauses;
 
     std::vector<int> assignment;
 
@@ -42,13 +42,13 @@ public:
         conflicts = 0;
 
         decisionsCount = 0;
-
-        restartThreshold = 50;
     }
 
     bool parseDIMACS(const std::string &input) {
 
         clauses.clear();
+
+        learnedClauses.clear();
 
         assignment.clear();
 
@@ -134,54 +134,77 @@ public:
         return false;
     }
 
-    bool hasConflict() {
+    bool processClauseSet(
+            std::vector<std::vector<int>>& db) {
 
-        for (auto &clause : clauses) {
+        for (auto &clause : db) {
 
-            bool sat = false;
+            bool satisfied = false;
 
             bool undecided = false;
+
+            int unassigned = 0;
+
+            int lastLit = 0;
 
             for (int lit : clause) {
 
                 int var = std::abs(lit);
 
-                if (assignment[var] == -1)
+                int val = assignment[var];
+
+                if (val == -1) {
+
                     undecided = true;
+
+                    unassigned++;
+
+                    lastLit = lit;
+                }
 
                 if (literalTrue(lit)) {
 
-                    sat = true;
+                    satisfied = true;
 
                     break;
                 }
             }
 
-            if (!sat && !undecided) {
+            if (!satisfied && !undecided) {
 
                 conflicts++;
 
-                for (int lit : clause) {
+                learnConflictClause(clause);
 
-                    activity[std::abs(lit)] += 2.0;
-                }
+                return false;
+            }
 
-                return true;
+            if (!satisfied && unassigned == 1) {
+
+                int var = std::abs(lastLit);
+
+                int value = (lastLit > 0) ? 1 : 0;
+
+                assignment[var] = value;
             }
         }
 
-        return false;
+        return true;
     }
 
-    bool allSatisfied() {
+    void learnConflictClause(
+            const std::vector<int>& conflictClause) {
 
-        for (auto &clause : clauses) {
+        std::vector<int> learned;
 
-            if (!clauseSatisfied(clause))
-                return false;
+        for (int lit : conflictClause) {
+
+            learned.push_back(-lit);
+
+            activity[std::abs(lit)] += 5.0;
         }
 
-        return true;
+        learnedClauses.push_back(learned);
     }
 
     bool propagate() {
@@ -192,48 +215,34 @@ public:
 
             changed = false;
 
-            for (auto &clause : clauses) {
+            size_t before =
+                    learnedClauses.size();
 
-                if (clauseSatisfied(clause))
-                    continue;
+            if (!processClauseSet(clauses))
+                return false;
 
-                int unassigned = 0;
+            if (!processClauseSet(learnedClauses))
+                return false;
 
-                int lastLit = 0;
+            if (learnedClauses.size() != before)
+                changed = true;
+        }
 
-                for (int lit : clause) {
+        return true;
+    }
 
-                    int var = std::abs(lit);
+    bool allSatisfied() {
 
-                    if (assignment[var] == -1) {
+        for (auto &clause : clauses) {
 
-                        unassigned++;
+            if (!clauseSatisfied(clause))
+                return false;
+        }
 
-                        lastLit = lit;
-                    }
-                }
+        for (auto &clause : learnedClauses) {
 
-                if (unassigned == 0)
-                    return false;
-
-                if (unassigned == 1) {
-
-                    int var = std::abs(lastLit);
-
-                    int value = (lastLit > 0) ? 1 : 0;
-
-                    if (assignment[var] == -1) {
-
-                        assignment[var] = value;
-
-                        changed = true;
-                    }
-                    else if (assignment[var] != value) {
-
-                        return false;
-                    }
-                }
-            }
+            if (!clauseSatisfied(clause))
+                return false;
         }
 
         return true;
@@ -267,32 +276,10 @@ public:
         }
     }
 
-    void restartSearch() {
-
-        for (int i = 1; i <= numVars; i++) {
-
-            assignment[i] = -1;
-        }
-
-        trail.clear();
-
-        restartThreshold += 50;
-    }
-
     bool solveRecursive(int level) {
 
         if (!propagate())
             return false;
-
-        if (hasConflict()) {
-
-            if (conflicts >= restartThreshold) {
-
-                restartSearch();
-            }
-
-            return false;
-        }
 
         if (allSatisfied())
             return true;
@@ -369,9 +356,14 @@ public:
         }
 
         out << "\n";
-        out << "Decisions: " << decisionsCount << "\n";
-        out << "Conflicts: " << conflicts << "\n";
-        out << "Restart Threshold: " << restartThreshold << "\n";
+        out << "Decisions: "
+            << decisionsCount << "\n";
+
+        out << "Conflicts: "
+            << conflicts << "\n";
+
+        out << "Learned Clauses: "
+            << learnedClauses.size() << "\n";
 
         return out.str();
     }

@@ -25,6 +25,17 @@ struct Clause {
     double activity;
 };
 
+struct TrailEntry {
+
+    int var;
+
+    int oldValue;
+
+    int oldLevel;
+
+    int oldReason;
+};
+
 class GraviSAT {
 
 private:
@@ -52,6 +63,8 @@ private:
     std::vector<double> varActivity;
 
     std::vector<int> savedPhase;
+
+    std::vector<TrailEntry> trail;
 
     std::queue<int> propagationQueue;
 
@@ -104,6 +117,8 @@ public:
 
         savedPhase.clear();
 
+        trail.clear();
+
         std::stringstream ss(input);
 
         std::string line;
@@ -132,12 +147,12 @@ public:
                 vars.resize(numVars + 1);
 
                 varActivity.resize(
-                        numVars + 1,
-                        0.0);
+                    numVars + 1,
+                    0.0);
 
                 savedPhase.resize(
-                        numVars + 1,
-                        1);
+                    numVars + 1,
+                    1);
 
                 for (int i = 1;
                      i <= numVars;
@@ -224,6 +239,17 @@ public:
                 vars[var].value == value;
         }
 
+        trail.push_back({
+
+            var,
+
+            vars[var].value,
+
+            vars[var].level,
+
+            vars[var].reason
+        });
+
         vars[var].value = value;
 
         vars[var].level = level;
@@ -237,6 +263,25 @@ public:
         propagations++;
 
         return true;
+    }
+
+    void rollback(size_t checkpoint) {
+
+        while (trail.size() > checkpoint) {
+
+            auto t = trail.back();
+
+            vars[t.var].value =
+                t.oldValue;
+
+            vars[t.var].level =
+                t.oldLevel;
+
+            vars[t.var].reason =
+                t.oldReason;
+
+            trail.pop_back();
+        }
     }
 
     bool propagateClauseSet(
@@ -299,13 +344,7 @@ public:
                 clause.activity += 5.0;
 
                 learnClause(
-                        clause.lits);
-
-                if (conflicts >=
-                    restartLimit) {
-
-                    restartSearch();
-                }
+                    clause.lits);
 
                 return false;
             }
@@ -374,28 +413,6 @@ public:
 
         learnedClauses.push_back(
             makeClause(learned));
-
-        reduceLearnedClauses();
-    }
-
-    void reduceLearnedClauses() {
-
-        if (learnedClauses.size() < 100)
-            return;
-
-        std::sort(
-            learnedClauses.begin(),
-            learnedClauses.end(),
-            [](const Clause& a,
-               const Clause& b) {
-
-                return
-                    a.activity >
-                    b.activity;
-            });
-
-        learnedClauses.resize(
-            learnedClauses.size() / 2);
     }
 
     bool allSatisfied() {
@@ -452,36 +469,6 @@ public:
 
             varActivity[i] *= 0.95;
         }
-
-        for (auto &c :
-             learnedClauses) {
-
-            c.activity *= 0.90;
-        }
-    }
-
-    void restartSearch() {
-
-        restarts++;
-
-        currentLevel = 0;
-
-        for (int i = 1;
-             i <= numVars;
-             i++) {
-
-            vars[i].value = -1;
-
-            vars[i].level = -1;
-
-            vars[i].reason = -1;
-        }
-
-        while (
-            !propagationQueue.empty())
-            propagationQueue.pop();
-
-        restartLimit += 50;
     }
 
     bool solveRecursive() {
@@ -505,9 +492,10 @@ public:
         int preferred =
             savedPhase[var];
 
-        {
-            auto backup = vars;
+        size_t checkpoint =
+            trail.size();
 
+        {
             int lit =
                 preferred ? var : -var;
 
@@ -521,12 +509,10 @@ public:
             if (solveRecursive())
                 return true;
 
-            vars = backup;
+            rollback(checkpoint);
         }
 
         {
-            auto backup = vars;
-
             int lit =
                 preferred ? -var : var;
 
@@ -540,7 +526,7 @@ public:
             if (solveRecursive())
                 return true;
 
-            vars = backup;
+            rollback(checkpoint);
         }
 
         currentLevel--;
@@ -596,6 +582,9 @@ public:
 
         out << "Restarts: "
             << restarts << "\n";
+
+        out << "Trail Size: "
+            << trail.size() << "\n";
 
         out << "Learned Clauses: "
             << learnedClauses.size()

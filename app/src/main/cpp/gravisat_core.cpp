@@ -14,11 +14,13 @@ struct VariableState {
     int reason;
 };
 
-struct TrailEntry {
+struct Clause {
 
-    int variable;
-    int value;
-    int level;
+    std::vector<int> lits;
+
+    int watch1;
+
+    int watch2;
 };
 
 class GraviSAT {
@@ -35,15 +37,13 @@ private:
 
     int currentLevel;
 
-    std::vector<std::vector<int>> clauses;
+    std::vector<Clause> clauses;
 
-    std::vector<std::vector<int>> learnedClauses;
+    std::vector<Clause> learnedClauses;
 
     std::vector<VariableState> vars;
 
     std::vector<double> activity;
-
-    std::vector<TrailEntry> trail;
 
     std::queue<int> propagationQueue;
 
@@ -62,6 +62,23 @@ public:
         currentLevel = 0;
     }
 
+    Clause makeClause(
+            const std::vector<int>& lits) {
+
+        Clause c;
+
+        c.lits = lits;
+
+        c.watch1 = 0;
+
+        if (lits.size() > 1)
+            c.watch2 = 1;
+        else
+            c.watch2 = 0;
+
+        return c;
+    }
+
     bool parseDIMACS(const std::string &input) {
 
         clauses.clear();
@@ -71,8 +88,6 @@ public:
         vars.clear();
 
         activity.clear();
-
-        trail.clear();
 
         std::stringstream ss(input);
 
@@ -103,7 +118,9 @@ public:
                 for (int i = 1; i <= numVars; i++) {
 
                     vars[i].value = -1;
+
                     vars[i].level = -1;
+
                     vars[i].reason = -1;
                 }
             }
@@ -113,20 +130,23 @@ public:
 
                 int lit;
 
-                std::vector<int> clause;
+                std::vector<int> lits;
 
                 while (ls >> lit) {
 
                     if (lit == 0)
                         break;
 
-                    clause.push_back(lit);
+                    lits.push_back(lit);
 
                     activity[std::abs(lit)] += 1.0;
                 }
 
-                if (!clause.empty())
-                    clauses.push_back(clause);
+                if (!lits.empty()) {
+
+                    clauses.push_back(
+                            makeClause(lits));
+                }
             }
         }
 
@@ -179,8 +199,6 @@ public:
 
         vars[var].reason = reason;
 
-        trail.push_back({var, value, level});
-
         propagationQueue.push(var);
 
         propagations++;
@@ -188,52 +206,77 @@ public:
         return true;
     }
 
-    bool propagateClauseDatabase(
-            std::vector<std::vector<int>>& db) {
+    bool propagateClauseSet(
+            std::vector<Clause>& db) {
 
         for (size_t c = 0; c < db.size(); c++) {
 
-            auto &clause = db[c];
+            Clause &clause = db[c];
 
-            bool satisfied = false;
+            int lit1 =
+                    clause.lits[clause.watch1];
 
-            int unassigned = 0;
+            int lit2 =
+                    clause.lits[clause.watch2];
 
-            int lastLit = 0;
+            if (literalTrue(lit1) ||
+                literalTrue(lit2))
+                continue;
 
-            for (int lit : clause) {
+            bool movedWatch = false;
 
-                if (literalTrue(lit)) {
+            for (size_t i = 0;
+                 i < clause.lits.size();
+                 i++) {
 
-                    satisfied = true;
+                if ((int)i == clause.watch1 ||
+                    (int)i == clause.watch2)
+                    continue;
 
-                    break;
-                }
+                int lit = clause.lits[i];
 
                 if (!literalFalse(lit)) {
 
-                    unassigned++;
+                    if (literalFalse(lit1))
+                        clause.watch1 = i;
+                    else
+                        clause.watch2 = i;
 
-                    lastLit = lit;
+                    movedWatch = true;
+
+                    break;
                 }
             }
 
-            if (satisfied)
+            if (movedWatch)
                 continue;
 
-            if (unassigned == 0) {
+            if (literalFalse(lit1) &&
+                literalFalse(lit2)) {
 
                 conflicts++;
 
-                learnClause(clause);
+                learnClause(clause.lits);
 
                 return false;
             }
 
-            if (unassigned == 1) {
+            if (!literalFalse(lit1)) {
 
                 if (!assignLiteral(
-                        lastLit,
+                        lit1,
+                        currentLevel,
+                        (int)c)) {
+
+                    conflicts++;
+
+                    return false;
+                }
+            }
+            else {
+
+                if (!assignLiteral(
+                        lit2,
                         currentLevel,
                         (int)c)) {
 
@@ -253,10 +296,10 @@ public:
 
             propagationQueue.pop();
 
-            if (!propagateClauseDatabase(clauses))
+            if (!propagateClauseSet(clauses))
                 return false;
 
-            if (!propagateClauseDatabase(
+            if (!propagateClauseSet(
                     learnedClauses))
                 return false;
         }
@@ -276,7 +319,8 @@ public:
             activity[std::abs(lit)] += 5.0;
         }
 
-        learnedClauses.push_back(learned);
+        learnedClauses.push_back(
+                makeClause(learned));
     }
 
     bool allSatisfied() {
@@ -285,7 +329,7 @@ public:
 
             bool sat = false;
 
-            for (int lit : clause) {
+            for (int lit : clause.lits) {
 
                 if (literalTrue(lit)) {
 
@@ -330,23 +374,19 @@ public:
         }
     }
 
-    void backtrack(int level) {
+    void resetAssignments() {
 
-        while (!trail.empty()) {
+        for (int i = 1; i <= numVars; i++) {
 
-            auto entry = trail.back();
+            vars[i].value = -1;
 
-            if (entry.level <= level)
-                break;
+            vars[i].level = -1;
 
-            vars[entry.variable].value = -1;
-            vars[entry.variable].level = -1;
-            vars[entry.variable].reason = -1;
-
-            trail.pop_back();
+            vars[i].reason = -1;
         }
 
-        currentLevel = level;
+        while (!propagationQueue.empty())
+            propagationQueue.pop();
     }
 
     bool solveRecursive() {
@@ -367,36 +407,38 @@ public:
         currentLevel++;
 
         {
-            auto backupVars = vars;
-            auto backupTrail = trail;
+            auto backup = vars;
 
-            assignLiteral(var, currentLevel, -1);
+            assignLiteral(
+                    var,
+                    currentLevel,
+                    -1);
 
             decayActivities();
 
             if (solveRecursive())
                 return true;
 
-            vars = backupVars;
-            trail = backupTrail;
+            vars = backup;
         }
 
         {
-            auto backupVars = vars;
-            auto backupTrail = trail;
+            auto backup = vars;
 
-            assignLiteral(-var, currentLevel, -1);
+            assignLiteral(
+                    -var,
+                    currentLevel,
+                    -1);
 
             decayActivities();
 
             if (solveRecursive())
                 return true;
 
-            vars = backupVars;
-            trail = backupTrail;
+            vars = backup;
         }
 
-        backtrack(currentLevel - 1);
+        currentLevel--;
 
         return false;
     }
@@ -429,6 +471,7 @@ public:
         }
 
         out << "\n";
+
         out << "Decisions: "
             << decisions << "\n";
 

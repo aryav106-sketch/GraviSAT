@@ -5,6 +5,7 @@
 #include <queue>
 #include <cmath>
 #include <algorithm>
+#include <set>
 
 struct Variable {
 
@@ -15,6 +16,8 @@ struct Variable {
     int reason;
 
     int polarity;
+
+    bool seen;
 };
 
 struct Clause {
@@ -27,9 +30,13 @@ struct Clause {
 
     double activity;
 
+    int lbd;
+
     bool learned;
 
     bool removed;
+
+    bool binary;
 };
 
 struct TrailEntry {
@@ -114,6 +121,23 @@ public:
         return (-lit * 2) + 1;
     }
 
+    int computeLBD(
+            const std::vector<int>& lits) {
+
+        std::set<int> levels;
+
+        for (int lit : lits) {
+
+            int var =
+                std::abs(lit);
+
+            levels.insert(
+                vars[var].level);
+        }
+
+        return levels.size();
+    }
+
     Clause makeClause(
             const std::vector<int>& lits,
             bool learned = false) {
@@ -125,13 +149,21 @@ public:
         c.watch1 = 0;
 
         c.watch2 =
-            (lits.size() > 1) ? 1 : 0;
+            (lits.size() > 1)
+            ? 1
+            : 0;
 
         c.activity = 0.0;
+
+        c.lbd =
+            computeLBD(lits);
 
         c.learned = learned;
 
         c.removed = false;
+
+        c.binary =
+            lits.size() == 2;
 
         return c;
     }
@@ -235,6 +267,8 @@ public:
                     vars[i].reason = -1;
 
                     vars[i].polarity = 1;
+
+                    vars[i].seen = false;
                 }
             }
             else {
@@ -315,7 +349,8 @@ public:
             int level,
             int reason) {
 
-        int var = std::abs(lit);
+        int var =
+            std::abs(lit);
 
         int value =
             (lit > 0) ? 1 : 0;
@@ -365,9 +400,46 @@ public:
             if (clause.removed)
                 continue;
 
+            if (clause.binary) {
+
+                int a =
+                    clause.lits[0];
+
+                int b =
+                    clause.lits[1];
+
+                int other =
+                    (a == -lit)
+                    ? b
+                    : a;
+
+                if (literalFalse(other)) {
+
+                    conflicts++;
+
+                    return &clause;
+                }
+
+                if (!literalTrue(other)) {
+
+                    if (!enqueue(
+                            other,
+                            currentLevel,
+                            clauseId)) {
+
+                        conflicts++;
+
+                        return &clause;
+                    }
+                }
+
+                continue;
+            }
+
             int watchPos =
                 (clause.lits[
-                    clause.watch1] == -lit)
+                    clause.watch1]
+                    == -lit)
                 ? clause.watch1
                 : clause.watch2;
 
@@ -471,40 +543,110 @@ public:
 
         std::vector<int> learned;
 
-        int highest = 0;
+        learned.push_back(0);
 
-        int secondHighest = 0;
+        int pathC = 0;
 
-        for (int lit :
-             conflictClause->lits) {
+        int p = 0;
 
-            int var =
-                std::abs(lit);
+        int index =
+            trail.size() - 1;
+
+        Clause* clause =
+            conflictClause;
+
+        do {
+
+            bumpClauseActivity(
+                *clause);
+
+            for (int lit :
+                 clause->lits) {
+
+                int var =
+                    std::abs(lit);
+
+                if (var == std::abs(p))
+                    continue;
+
+                if (!vars[var].seen &&
+                    vars[var].level > 0) {
+
+                    vars[var].seen = true;
+
+                    bumpVariableActivity(
+                        var);
+
+                    if (vars[var].level ==
+                        currentLevel) {
+
+                        pathC++;
+                    }
+                    else {
+
+                        learned.push_back(
+                            lit);
+                    }
+                }
+            }
+
+            while (true) {
+
+                p =
+                    trail[index--].lit;
+
+                if (vars[
+                        std::abs(p)].seen)
+                    break;
+            }
+
+            vars[
+                std::abs(p)].seen = false;
+
+            pathC--;
+
+            if (pathC > 0) {
+
+                int reason =
+                    vars[
+                        std::abs(p)]
+                        .reason;
+
+                if (reason >= 0)
+                    clause =
+                        &clauses[
+                            reason];
+            }
+
+        } while (pathC > 0);
+
+        learned[0] = -p;
+
+        int maxLevel = 0;
+
+        for (size_t i = 1;
+             i < learned.size();
+             i++) {
 
             int lvl =
-                vars[var].level;
+                vars[
+                    std::abs(
+                        learned[i])]
+                    .level;
 
-            learned.push_back(-lit);
-
-            bumpVariableActivity(var);
-
-            if (lvl > highest) {
-
-                secondHighest =
-                    highest;
-
-                highest = lvl;
-            }
-            else if (
-                lvl > secondHighest &&
-                lvl != highest) {
-
-                secondHighest = lvl;
-            }
+            if (lvl > maxLevel)
+                maxLevel = lvl;
         }
 
         backtrackLevel =
-            secondHighest;
+            maxLevel;
+
+        for (int lit : learned) {
+
+            vars[
+                std::abs(lit)]
+                .seen = false;
+        }
 
         return learned;
     }
@@ -529,35 +671,68 @@ public:
         addWatch(
             lits[c.watch2],
             id);
+
+        enqueue(
+            lits[0],
+            backtrackLevel(),
+            id);
+    }
+
+    int backtrackLevel() {
+
+        return currentLevel > 0
+               ? currentLevel - 1
+               : 0;
     }
 
     void reduceLearnedClauses() {
 
-        if (clauses.size() < 200)
+        if (clauses.size() < 300)
             return;
 
+        std::vector<int> order;
+
+        for (size_t i = 0;
+             i < clauses.size();
+             i++) {
+
+            if (clauses[i].learned &&
+                !clauses[i].removed &&
+                clauses[i].lbd > 2) {
+
+                order.push_back(i);
+            }
+        }
+
         std::sort(
-            clauses.begin(),
-            clauses.end(),
-            [](const Clause& a,
-               const Clause& b) {
+            order.begin(),
+            order.end(),
+            [&](int a, int b) {
+
+                Clause& A =
+                    clauses[a];
+
+                Clause& B =
+                    clauses[b];
+
+                if (A.lbd != B.lbd)
+                    return A.lbd > B.lbd;
 
                 return
-                    a.activity <
-                    b.activity;
+                    A.activity <
+                    B.activity;
             });
 
         int removeCount =
-            clauses.size() / 5;
+            order.size() / 3;
 
         for (int i = 0;
              i < removeCount;
              i++) {
 
-            if (clauses[i].learned) {
-
-                clauses[i].removed = true;
-            }
+            clauses[
+                order[i]]
+                .removed = true;
         }
     }
 
@@ -609,7 +784,7 @@ public:
             !propagationQueue.empty())
             propagationQueue.pop();
 
-        restartLimit += 100;
+        restartLimit += 150;
     }
 
     void backtrack(int level) {
@@ -661,19 +836,18 @@ public:
                 if (currentLevel == 0)
                     return false;
 
-                int backtrackLevel;
+                int bt;
 
                 std::vector<int>
                 learned =
                     analyzeConflict(
                         conflict,
-                        backtrackLevel);
+                        bt);
 
                 addLearnedClause(
                     learned);
 
-                backtrack(
-                    backtrackLevel);
+                backtrack(bt);
 
                 decayVariableActivity();
 
@@ -766,7 +940,7 @@ public:
             << clauses.size()
             << "\n";
 
-        out << "Decision Level: "
+        out << "Current Level: "
             << currentLevel << "\n";
 
         return out.str();

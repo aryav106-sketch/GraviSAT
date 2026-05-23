@@ -5,7 +5,68 @@
 #include <cmath>
 #include <chrono>
 
-class GraviSAT {
+class GraviSAT {bool pureLiteralElimination() {
+
+    bool changed = false;
+
+    std::vector<int> pos(vars + 1, 0);
+    std::vector<int> neg(vars + 1, 0);
+
+    for (const auto& clause : clauses) {
+
+        bool satisfied = false;
+
+        for (int lit : clause) {
+
+            int var = std::abs(lit);
+
+            if (assignment[var] == -1)
+                continue;
+
+            bool val = assignment[var];
+
+            if ((lit > 0 && val) || (lit < 0 && !val)) {
+                satisfied = true;
+                break;
+            }
+        }
+
+        if (satisfied)
+            continue;
+
+        for (int lit : clause) {
+
+            int var = std::abs(lit);
+
+            if (assignment[var] != -1)
+                continue;
+
+            if (lit > 0)
+                pos[var]++;
+
+            else
+                neg[var]++;
+        }
+    }
+
+    for (int i = 1; i <= vars; i++) {
+
+        if (assignment[i] != -1)
+            continue;
+
+        if (pos[i] > 0 && neg[i] == 0) {
+            assignment[i] = 1;
+            changed = true;
+        }
+
+        if (neg[i] > 0 && pos[i] == 0) {
+            assignment[i] = 0;
+            changed = true;
+        }
+    }
+
+    return changed;
+}
 private:
     int vars;
     int clausesCount;
@@ -111,15 +172,123 @@ public:
         return -1;
     }
 
-    bool dpll() {
+    bool bool dpll() {
+
+    if (!unitPropagation())
+        return false;
+
+    pureLiteralElimination();
+
+    bool complete = true;
+
+    for (int i = 1; i <= vars; i++) {
+        if (assignment[i] == -1) {
+            complete = false;
+            break;
+        }
+    }
+
+    if (complete)
+        return allSatisfied();
+
+    int var = chooseVariable();
+
+    if (var == -1)
+        return allSatisfied();
+
+    decisions++;
+
+    {
+        auto backup = assignment;
+
+        assignment[var] = 1;
+
+        if (dpll())
+            return true;
+
+        assignment = backup;
+    }
+
+    {
+        auto backup = assignment;
+
+        assignment[var] = 0;
+
+        if (dpll())
+            return true;
+
+        assignment = backup;
+    }
+
+    return false;
+    } {
 
         if (!unitPropagation())
             return false;
 
-        if (allSatisfied())
+        if (bool allSatisfied() {
+
+    for (const auto& clause : clauses) {
+
+        bool satisfied = false;
+        bool hasUnassigned = false;
+
+        for (int lit : clause) {
+
+            int var = std::abs(lit);
+
+            if (assignment[var] == -1) {
+                hasUnassigned = true;
+                continue;
+            }
+
+            bool val = assignment[var];
+
+            if ((lit > 0 && val) || (lit < 0 && !val)) {
+                satisfied = true;
+                break;
+            }
+        }
+
+        if (!satisfied && !hasUnassigned)
+            return false;
+
+        if (!satisfied)
+            return false;
+    }
+
+    return true;
+            })
             return true;
 
-        int var = chooseVariable();
+        int var = int chooseVariable() {
+
+    std::vector<int> freq(vars + 1, 0);
+
+    for (const auto& clause : clauses) {
+
+        for (int lit : clause) {
+
+            int var = std::abs(lit);
+
+            if (assignment[var] == -1)
+                freq[var]++;
+        }
+    }
+
+    int bestVar = -1;
+    int bestFreq = -1;
+
+    for (int i = 1; i <= vars; i++) {
+
+        if (assignment[i] == -1 && freq[i] > bestFreq) {
+            bestFreq = freq[i];
+            bestVar = i;
+        }
+    }
+
+    return bestVar;
+        };
 
         if (var == -1)
             return false;

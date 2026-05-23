@@ -6,11 +6,24 @@
 #include <cmath>
 #include <algorithm>
 
+struct Decision {
+
+    int variable;
+    int value;
+    int level;
+};
+
 class GraviSAT {
 
 private:
 
     int numVars;
+
+    int conflicts;
+
+    int decisionsCount;
+
+    int restartThreshold;
 
     std::vector<std::vector<int>> clauses;
 
@@ -18,10 +31,19 @@ private:
 
     std::vector<double> activity;
 
+    std::vector<Decision> trail;
+
 public:
 
     GraviSAT() {
+
         numVars = 0;
+
+        conflicts = 0;
+
+        decisionsCount = 0;
+
+        restartThreshold = 50;
     }
 
     bool parseDIMACS(const std::string &input) {
@@ -31,6 +53,8 @@ public:
         assignment.clear();
 
         activity.clear();
+
+        trail.clear();
 
         std::stringstream ss(input);
 
@@ -122,9 +146,7 @@ public:
 
                 int var = std::abs(lit);
 
-                int val = assignment[var];
-
-                if (val == -1)
+                if (assignment[var] == -1)
                     undecided = true;
 
                 if (literalTrue(lit)) {
@@ -135,8 +157,17 @@ public:
                 }
             }
 
-            if (!sat && !undecided)
+            if (!sat && !undecided) {
+
+                conflicts++;
+
+                for (int lit : clause) {
+
+                    activity[std::abs(lit)] += 2.0;
+                }
+
                 return true;
+            }
         }
 
         return false;
@@ -153,7 +184,7 @@ public:
         return true;
     }
 
-    bool watchedPropagation() {
+    bool propagate() {
 
         bool changed = true;
 
@@ -208,7 +239,7 @@ public:
         return true;
     }
 
-    int chooseVSIDSVariable() {
+    int chooseVariable() {
 
         double bestScore = -1.0;
 
@@ -236,71 +267,113 @@ public:
         }
     }
 
-    bool solveRecursive() {
+    void restartSearch() {
 
-        if (!watchedPropagation())
+        for (int i = 1; i <= numVars; i++) {
+
+            assignment[i] = -1;
+        }
+
+        trail.clear();
+
+        restartThreshold += 50;
+    }
+
+    bool solveRecursive(int level) {
+
+        if (!propagate())
             return false;
 
-        if (hasConflict())
+        if (hasConflict()) {
+
+            if (conflicts >= restartThreshold) {
+
+                restartSearch();
+            }
+
             return false;
+        }
 
         if (allSatisfied())
             return true;
 
-        int var = chooseVSIDSVariable();
+        int var = chooseVariable();
 
         if (var == -1)
             return false;
 
-        std::vector<int> backup = assignment;
+        decisionsCount++;
 
-        assignment[var] = 1;
+        {
+            auto backup = assignment;
 
-        decayActivities();
+            assignment[var] = 1;
 
-        if (solveRecursive())
-            return true;
+            trail.push_back({var, 1, level});
 
-        assignment = backup;
+            decayActivities();
 
-        assignment[var] = 0;
+            if (solveRecursive(level + 1))
+                return true;
 
-        decayActivities();
+            assignment = backup;
 
-        if (solveRecursive())
-            return true;
+            trail.pop_back();
+        }
 
-        assignment = backup;
+        {
+            auto backup = assignment;
+
+            assignment[var] = 0;
+
+            trail.push_back({var, 0, level});
+
+            decayActivities();
+
+            if (solveRecursive(level + 1))
+                return true;
+
+            assignment = backup;
+
+            trail.pop_back();
+        }
 
         return false;
     }
 
     std::string solveSAT() {
 
-        bool sat = solveRecursive();
+        bool sat = solveRecursive(0);
 
-        if (!sat)
-            return "UNSATISFIABLE";
+        std::stringstream out;
 
-        std::string out = "SATISFIABLE\n\n";
+        if (!sat) {
 
-        for (int i = 1; i <= numVars; i++) {
+            out << "UNSATISFIABLE\n\n";
+        }
+        else {
 
-            out += "x";
+            out << "SATISFIABLE\n\n";
 
-            out += std::to_string(i);
+            for (int i = 1; i <= numVars; i++) {
 
-            out += " = ";
+                out << "x" << i << " = ";
 
-            if (assignment[i] == 1)
-                out += "TRUE";
-            else
-                out += "FALSE";
+                if (assignment[i] == 1)
+                    out << "TRUE";
+                else
+                    out << "FALSE";
 
-            out += "\n";
+                out << "\n";
+            }
         }
 
-        return out;
+        out << "\n";
+        out << "Decisions: " << decisionsCount << "\n";
+        out << "Conflicts: " << conflicts << "\n";
+        out << "Restart Threshold: " << restartThreshold << "\n";
+
+        return out.str();
     }
 };
 

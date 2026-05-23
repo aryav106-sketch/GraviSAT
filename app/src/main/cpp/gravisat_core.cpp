@@ -5,12 +5,20 @@
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>
+#include <queue>
 
-struct Assignment {
+struct VariableState {
 
     int value;
     int level;
     int reason;
+};
+
+struct TrailEntry {
+
+    int variable;
+    int value;
+    int level;
 };
 
 class GraviSAT {
@@ -21,7 +29,9 @@ private:
 
     int conflicts;
 
-    int decisionsCount;
+    int decisions;
+
+    int propagations;
 
     int currentLevel;
 
@@ -29,9 +39,13 @@ private:
 
     std::vector<std::vector<int>> learnedClauses;
 
-    std::vector<Assignment> assigns;
+    std::vector<VariableState> vars;
 
     std::vector<double> activity;
+
+    std::vector<TrailEntry> trail;
+
+    std::queue<int> propagationQueue;
 
 public:
 
@@ -41,7 +55,9 @@ public:
 
         conflicts = 0;
 
-        decisionsCount = 0;
+        decisions = 0;
+
+        propagations = 0;
 
         currentLevel = 0;
     }
@@ -52,9 +68,11 @@ public:
 
         learnedClauses.clear();
 
-        assigns.clear();
+        vars.clear();
 
         activity.clear();
+
+        trail.clear();
 
         std::stringstream ss(input);
 
@@ -74,21 +92,19 @@ public:
 
                 std::string tmp;
 
-                int vars, cls;
+                int cls;
 
-                ls >> tmp >> tmp >> vars >> cls;
+                ls >> tmp >> tmp >> numVars >> cls;
 
-                numVars = vars;
-
-                assigns.resize(numVars + 1);
+                vars.resize(numVars + 1);
 
                 activity.resize(numVars + 1, 0.0);
 
                 for (int i = 1; i <= numVars; i++) {
 
-                    assigns[i].value = -1;
-                    assigns[i].level = -1;
-                    assigns[i].reason = -1;
+                    vars[i].value = -1;
+                    vars[i].level = -1;
+                    vars[i].reason = -1;
                 }
             }
             else {
@@ -121,7 +137,7 @@ public:
 
         int var = std::abs(lit);
 
-        int val = assigns[var].value;
+        int val = vars[var].value;
 
         if (val == -1)
             return false;
@@ -134,7 +150,7 @@ public:
 
         int var = std::abs(lit);
 
-        int val = assigns[var].value;
+        int val = vars[var].value;
 
         if (val == -1)
             return false;
@@ -143,7 +159,36 @@ public:
                (lit < 0 && val == 1);
     }
 
-    bool propagateDatabase(
+    bool assignLiteral(
+            int lit,
+            int level,
+            int reason) {
+
+        int var = std::abs(lit);
+
+        int value = (lit > 0) ? 1 : 0;
+
+        if (vars[var].value != -1) {
+
+            return vars[var].value == value;
+        }
+
+        vars[var].value = value;
+
+        vars[var].level = level;
+
+        vars[var].reason = reason;
+
+        trail.push_back({var, value, level});
+
+        propagationQueue.push(var);
+
+        propagations++;
+
+        return true;
+    }
+
+    bool propagateClauseDatabase(
             std::vector<std::vector<int>>& db) {
 
         for (size_t c = 0; c < db.size(); c++) {
@@ -165,9 +210,7 @@ public:
                     break;
                 }
 
-                int var = std::abs(lit);
-
-                if (assigns[var].value == -1) {
+                if (!literalFalse(lit)) {
 
                     unassigned++;
 
@@ -189,15 +232,15 @@ public:
 
             if (unassigned == 1) {
 
-                int var = std::abs(lastLit);
+                if (!assignLiteral(
+                        lastLit,
+                        currentLevel,
+                        (int)c)) {
 
-                int value = (lastLit > 0) ? 1 : 0;
+                    conflicts++;
 
-                assigns[var].value = value;
-
-                assigns[var].level = currentLevel;
-
-                assigns[var].reason = (int)c;
+                    return false;
+                }
             }
         }
 
@@ -206,34 +249,27 @@ public:
 
     bool propagate() {
 
-        bool changed = true;
+        while (!propagationQueue.empty()) {
 
-        while (changed) {
+            propagationQueue.pop();
 
-            changed = false;
-
-            size_t before =
-                    learnedClauses.size();
-
-            if (!propagateDatabase(clauses))
+            if (!propagateClauseDatabase(clauses))
                 return false;
 
-            if (!propagateDatabase(learnedClauses))
+            if (!propagateClauseDatabase(
+                    learnedClauses))
                 return false;
-
-            if (learnedClauses.size() != before)
-                changed = true;
         }
 
         return true;
     }
 
     void learnClause(
-            const std::vector<int>& conflictClause) {
+            const std::vector<int>& conflict) {
 
         std::vector<int> learned;
 
-        for (int lit : conflictClause) {
+        for (int lit : conflict) {
 
             learned.push_back(-lit);
 
@@ -274,7 +310,7 @@ public:
 
         for (int i = 1; i <= numVars; i++) {
 
-            if (assigns[i].value == -1 &&
+            if (vars[i].value == -1 &&
                 activity[i] > best) {
 
                 best = activity[i];
@@ -296,14 +332,18 @@ public:
 
     void backtrack(int level) {
 
-        for (int i = 1; i <= numVars; i++) {
+        while (!trail.empty()) {
 
-            if (assigns[i].level > level) {
+            auto entry = trail.back();
 
-                assigns[i].value = -1;
-                assigns[i].level = -1;
-                assigns[i].reason = -1;
-            }
+            if (entry.level <= level)
+                break;
+
+            vars[entry.variable].value = -1;
+            vars[entry.variable].level = -1;
+            vars[entry.variable].reason = -1;
+
+            trail.pop_back();
         }
 
         currentLevel = level;
@@ -322,36 +362,38 @@ public:
         if (var == -1)
             return false;
 
-        decisionsCount++;
+        decisions++;
 
         currentLevel++;
 
         {
-            auto backup = assigns;
+            auto backupVars = vars;
+            auto backupTrail = trail;
 
-            assigns[var].value = 1;
-            assigns[var].level = currentLevel;
+            assignLiteral(var, currentLevel, -1);
 
             decayActivities();
 
             if (solveRecursive())
                 return true;
 
-            assigns = backup;
+            vars = backupVars;
+            trail = backupTrail;
         }
 
         {
-            auto backup = assigns;
+            auto backupVars = vars;
+            auto backupTrail = trail;
 
-            assigns[var].value = 0;
-            assigns[var].level = currentLevel;
+            assignLiteral(-var, currentLevel, -1);
 
             decayActivities();
 
             if (solveRecursive())
                 return true;
 
-            assigns = backup;
+            vars = backupVars;
+            trail = backupTrail;
         }
 
         backtrack(currentLevel - 1);
@@ -377,7 +419,7 @@ public:
 
                 out << "x" << i << " = ";
 
-                if (assigns[i].value == 1)
+                if (vars[i].value == 1)
                     out << "TRUE";
                 else
                     out << "FALSE";
@@ -388,10 +430,13 @@ public:
 
         out << "\n";
         out << "Decisions: "
-            << decisionsCount << "\n";
+            << decisions << "\n";
 
         out << "Conflicts: "
             << conflicts << "\n";
+
+        out << "Propagations: "
+            << propagations << "\n";
 
         out << "Learned Clauses: "
             << learnedClauses.size() << "\n";

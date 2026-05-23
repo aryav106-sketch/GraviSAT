@@ -4,6 +4,14 @@
 #include <vector>
 #include <string>
 
+struct Clause {
+
+    std::vector<int> literals;
+
+    int watch1;
+    int watch2;
+};
+
 class Solver {
 
 public:
@@ -20,18 +28,20 @@ private:
 
     bool dpll();
 
-    bool propagateUnits();
+    bool propagate();
 
     bool hasConflict();
 
-    bool allClausesSatisfied();
+    bool allSatisfied();
+
+    int chooseVariable();
 
 private:
 
     int variables;
     int clauses;
 
-    std::vector<std::vector<int>> clauseDatabase;
+    std::vector<Clause> clauseDatabase;
 
     std::vector<int> assignment;
 };

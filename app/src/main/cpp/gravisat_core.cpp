@@ -537,119 +537,185 @@ public:
         return nullptr;
     }
 
-    std::vector<int> analyzeConflict(
-            Clause* conflictClause,
-            int& backtrackLevel) {
+ std::vector<int> analyzeConflict(
+        Clause* conflictClause,
+        int& backtrackLevel) {
 
-        std::vector<int> learned;
+    std::vector<int> learned;
 
-        learned.push_back(0);
+    learned.push_back(0);
 
-        int pathC = 0;
+    int pathC = 0;
 
-        int p = 0;
+    int p = 0;
 
-        int index =
-            trail.size() - 1;
+    int index =
+        trail.size() - 1;
 
-        Clause* clause =
-            conflictClause;
+    Clause* clause =
+        conflictClause;
 
-        do {
+    do {
 
-            bumpClauseActivity(
-                *clause);
+        bumpClauseActivity(
+            *clause);
 
-            for (int lit :
-                 clause->lits) {
+        for (int lit :
+             clause->lits) {
 
-                int var =
-                    std::abs(lit);
+            int var =
+                std::abs(lit);
 
-                if (var == std::abs(p))
-                    continue;
+            if (var == std::abs(p))
+                continue;
 
-                if (!vars[var].seen &&
-                    vars[var].level > 0) {
+            if (!vars[var].seen &&
+                vars[var].level > 0) {
 
-                    vars[var].seen = true;
+                vars[var].seen = true;
 
-                    bumpVariableActivity(
-                        var);
+                bumpVariableActivity(
+                    var);
 
-                    if (vars[var].level ==
-                        currentLevel) {
+                if (vars[var].level ==
+                    currentLevel) {
 
-                        pathC++;
-                    }
-                    else {
+                    pathC++;
+                }
+                else {
 
-                        learned.push_back(
-                            lit);
-                    }
+                    learned.push_back(
+                        lit);
                 }
             }
+        }
 
-            while (true) {
+        while (true) {
 
-                p =
-                    trail[index--].lit;
+            p =
+                trail[index--].lit;
 
-                if (vars[
-                        std::abs(p)].seen)
-                    break;
-            }
+            if (vars[
+                    std::abs(p)].seen)
+                break;
+        }
 
-            vars[
-                std::abs(p)].seen = false;
+        vars[
+            std::abs(p)].seen = false;
 
-            pathC--;
+        pathC--;
 
-            if (pathC > 0) {
+        if (pathC > 0) {
 
-                int reason =
-                    vars[
-                        std::abs(p)]
-                        .reason;
-
-                if (reason >= 0)
-                    clause =
-                        &clauses[
-                            reason];
-            }
-
-        } while (pathC > 0);
-
-        learned[0] = -p;
-
-        int maxLevel = 0;
-
-        for (size_t i = 1;
-             i < learned.size();
-             i++) {
-
-            int lvl =
+            int reason =
                 vars[
-                    std::abs(
-                        learned[i])]
-                    .level;
+                    std::abs(p)]
+                    .reason;
 
-            if (lvl > maxLevel)
-                maxLevel = lvl;
+            if (reason >= 0)
+                clause =
+                    &clauses[
+                        reason];
         }
 
-        backtrackLevel =
-            maxLevel;
+    } while (pathC > 0);
 
-        for (int lit : learned) {
+    learned[0] = -p;
 
-            vars[
-                std::abs(lit)]
-                .seen = false;
+    // =========================================
+    // REAL CLAUSE MINIMIZATION
+    // =========================================
+
+    std::vector<int> minimized;
+
+    minimized.push_back(
+        learned[0]);
+
+    for (size_t i = 1;
+         i < learned.size();
+         i++) {
+
+        int lit = learned[i];
+
+        int var =
+            std::abs(lit);
+
+        bool removable = false;
+
+        int reason =
+            vars[var].reason;
+
+        if (reason >= 0) {
+
+            Clause& rc =
+                clauses[reason];
+
+            removable = true;
+
+            for (int rlit :
+                 rc.lits) {
+
+                int rvar =
+                    std::abs(rlit);
+
+                if (rvar == var)
+                    continue;
+
+                if (!vars[rvar].seen &&
+                    vars[rvar].level > 0) {
+
+                    removable = false;
+
+                    break;
+                }
+            }
         }
 
-        return learned;
+        if (!removable) {
+
+            minimized.push_back(
+                lit);
+        }
     }
+
+    learned = minimized;
+
+    // =========================================
+    // BACKTRACK LEVEL
+    // =========================================
+
+    int maxLevel = 0;
+
+    for (size_t i = 1;
+         i < learned.size();
+         i++) {
+
+        int lvl =
+            vars[
+                std::abs(
+                    learned[i])]
+                .level;
+
+        if (lvl > maxLevel)
+            maxLevel = lvl;
+    }
+
+    backtrackLevel =
+        maxLevel;
+
+    // =========================================
+    // CLEANUP
+    // =========================================
+
+    for (int lit : learned) {
+
+        vars[
+            std::abs(lit)]
+            .seen = false;
+    }
+
+    return learned;
+ }
 
     void addLearnedClause(
             const std::vector<int>& lits) {

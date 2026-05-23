@@ -1,440 +1,204 @@
 #include <jni.h>
 #include <string>
-#include <sstream>
 #include <vector>
+#include <sstream>
+#include <cstdlib>
 #include <cmath>
-#include <chrono>
 
-class GraviSAT {bool pureLiteralElimination() {
-
-    bool changed = false;
-
-    std::vector<int> pos(vars + 1, 0);
-    std::vector<int> neg(vars + 1, 0);
-
-    for (const auto& clause : clauses) {
-
-        bool satisfied = false;
-
-        for (int lit : clause) {
-
-            int var = std::abs(lit);
-
-            if (assignment[var] == -1)
-                continue;
-
-            bool val = assignment[var];
-
-            if ((lit > 0 && val) || (lit < 0 && !val)) {
-                satisfied = true;
-                break;
-            }
-        }
-
-        if (satisfied)
-            continue;
-
-        for (int lit : clause) {
-
-            int var = std::abs(lit);
-
-            if (assignment[var] != -1)
-                continue;
-
-            if (lit > 0)
-                pos[var]++;
-
-            else
-                neg[var]++;
-        }
-    }
-
-    for (int i = 1; i <= vars; i++) {
-
-        if (assignment[i] != -1)
-            continue;
-
-        if (pos[i] > 0 && neg[i] == 0) {
-            assignment[i] = 1;
-            changed = true;
-        }
-
-        if (neg[i] > 0 && pos[i] == 0) {
-            assignment[i] = 0;
-            changed = true;
-        }
-    }
-
-    return changed;
-}
+class GraviSAT {
 private:
-    int vars;
-    int clausesCount;
-
+    int numVars;
     std::vector<std::vector<int>> clauses;
     std::vector<int> assignment;
 
-    long long decisions = 0;
-    long long propagations = 0;
-
 public:
-    GraviSAT(int v) {
-        vars = v;
-        assignment.resize(vars + 1, -1);
+    GraviSAT() {
+        numVars = 0;
     }
 
-    void addClause(const std::vector<int>& clause) {
-        clauses.push_back(clause);
-    }
+    bool parseDIMACS(const std::string &input) {
+        clauses.clear();
+        assignment.clear();
 
-    bool unitPropagation() {
-        bool changed = true;
+        std::stringstream ss(input);
+        std::string line;
 
-        while (changed) {
-            changed = false;
+        while (std::getline(ss, line)) {
 
-            for (const auto& clause : clauses) {
+            if (line.empty())
+                continue;
 
-                int unassigned = 0;
-                int lastLit = 0;
-                bool satisfied = false;
+            if (line[0] == 'c')
+                continue;
 
-                for (int lit : clause) {
-                    int var = std::abs(lit);
+            if (line[0] == 'p') {
+                std::stringstream ls(line);
+                std::string tmp;
 
-                    if (assignment[var] == -1) {
-                        unassigned++;
-                        lastLit = lit;
-                    }
-                    else {
-                        bool val = assignment[var];
+                int vars, cls;
 
-                        if ((lit > 0 && val) || (lit < 0 && !val)) {
-                            satisfied = true;
-                            break;
-                        }
-                    }
+                ls >> tmp >> tmp >> vars >> cls;
+
+                numVars = vars;
+
+                assignment.resize(numVars + 1, -1);
+            }
+            else {
+                std::stringstream ls(line);
+
+                int lit;
+                std::vector<int> clause;
+
+                while (ls >> lit) {
+                    if (lit == 0)
+                        break;
+
+                    clause.push_back(lit);
                 }
 
-                if (satisfied)
-                    continue;
-
-                if (unassigned == 0)
-                    return false;
-
-                if (unassigned == 1) {
-                    int var = std::abs(lastLit);
-
-                    assignment[var] = (lastLit > 0) ? 1 : 0;
-
-                    propagations++;
-                    changed = true;
-                }
+                if (!clause.empty())
+                    clauses.push_back(clause);
             }
         }
 
         return true;
     }
 
-    bool allSatisfied() {
-        for (const auto& clause : clauses) {
+    bool isSatisfied() {
+        for (auto &clause : clauses) {
 
-            bool satisfied = false;
+            bool sat = false;
 
             for (int lit : clause) {
 
                 int var = std::abs(lit);
 
-                if (assignment[var] == -1)
+                if (var >= assignment.size())
                     continue;
 
-                bool val = assignment[var];
+                int val = assignment[var];
 
-                if ((lit > 0 && val) || (lit < 0 && !val)) {
-                    satisfied = true;
+                if (val == -1)
+                    continue;
+
+                if ((lit > 0 && val == 1) ||
+                    (lit < 0 && val == 0)) {
+
+                    sat = true;
                     break;
                 }
             }
 
-            if (!satisfied)
+            if (!sat)
                 return false;
         }
 
         return true;
     }
 
-    int chooseVariable() {
-        for (int i = 1; i <= vars; i++) {
-            if (assignment[i] == -1)
-                return i;
+    bool hasConflict() {
+        for (auto &clause : clauses) {
+
+            bool sat = false;
+            bool undecided = false;
+
+            for (int lit : clause) {
+
+                int var = std::abs(lit);
+
+                int val = assignment[var];
+
+                if (val == -1) {
+                    undecided = true;
+                }
+
+                if ((lit > 0 && val == 1) ||
+                    (lit < 0 && val == 0)) {
+
+                    sat = true;
+                    break;
+                }
+            }
+
+            if (!sat && !undecided)
+                return true;
         }
 
-        return -1;
-    }
-
-    bool bool dpll() {
-
-    if (!unitPropagation())
         return false;
-
-    pureLiteralElimination();
-
-    bool complete = true;
-
-    for (int i = 1; i <= vars; i++) {
-        if (assignment[i] == -1) {
-            complete = false;
-            break;
-        }
     }
 
-    if (complete)
-        return allSatisfied();
+    bool dpll(int var) {
 
-    int var = chooseVariable();
+        if (hasConflict())
+            return false;
 
-    if (var == -1)
-        return allSatisfied();
+        if (var > numVars)
+            return isSatisfied();
 
-    decisions++;
-
-    {
-        auto backup = assignment;
+        if (assignment[var] != -1)
+            return dpll(var + 1);
 
         assignment[var] = 1;
 
-        if (dpll())
+        if (dpll(var + 1))
             return true;
-
-        assignment = backup;
-    }
-
-    {
-        auto backup = assignment;
 
         assignment[var] = 0;
 
-        if (dpll())
+        if (dpll(var + 1))
             return true;
 
-        assignment = backup;
-    }
-
-    return false;
-    } {
-
-        if (!unitPropagation())
-            return false;
-
-        if (bool allSatisfied() {
-
-    for (const auto& clause : clauses) {
-
-        bool satisfied = false;
-        bool hasUnassigned = false;
-
-        for (int lit : clause) {
-
-            int var = std::abs(lit);
-
-            if (assignment[var] == -1) {
-                hasUnassigned = true;
-                continue;
-            }
-
-            bool val = assignment[var];
-
-            if ((lit > 0 && val) || (lit < 0 && !val)) {
-                satisfied = true;
-                break;
-            }
-        }
-
-        if (!satisfied && !hasUnassigned)
-            return false;
-
-        if (!satisfied)
-            return false;
-    }
-
-    return true;
-            })
-            return true;
-
-        int var = int chooseVariable() {
-
-    std::vector<int> freq(vars + 1, 0);
-
-    for (const auto& clause : clauses) {
-
-        for (int lit : clause) {
-
-            int var = std::abs(lit);
-
-            if (assignment[var] == -1)
-                freq[var]++;
-        }
-    }
-
-    int bestVar = -1;
-    int bestFreq = -1;
-
-    for (int i = 1; i <= vars; i++) {
-
-        if (assignment[i] == -1 && freq[i] > bestFreq) {
-            bestFreq = freq[i];
-            bestVar = i;
-        }
-    }
-
-    return bestVar;
-        };
-
-        if (var == -1)
-            return false;
-
-        decisions++;
-
-        {
-            auto backup = assignment;
-
-            assignment[var] = 1;
-
-            if (dpll())
-                return true;
-
-            assignment = backup;
-        }
-
-        {
-            auto backup = assignment;
-
-            assignment[var] = 0;
-
-            if (dpll())
-                return true;
-
-            assignment = backup;
-        }
+        assignment[var] = -1;
 
         return false;
     }
 
-    std::string solve() {
+    std::string solveSAT() {
 
-        auto start = std::chrono::high_resolution_clock::now();
+        bool result = dpll(1);
 
-        bool sat = dpll();
+        if (!result)
+            return "UNSATISFIABLE";
 
-        auto end = std::chrono::high_resolution_clock::now();
+        std::string out = "SATISFIABLE\n\n";
 
-        double timeMs =
-            std::chrono::duration<double, std::milli>(end - start).count();
+        for (int i = 1; i <= numVars; i++) {
 
-        std::stringstream ss;
+            out += "x";
+            out += std::to_string(i);
+            out += " = ";
 
-        if (sat) {
-            ss << "SATISFIABLE\n\n";
+            if (assignment[i] == 1)
+                out += "TRUE";
+            else
+                out += "FALSE";
 
-            for (int i = 1; i <= vars; i++) {
-
-                if (assignment[i] == 1)
-                    ss << "x" << i << " = TRUE\n";
-
-                else if (assignment[i] == 0)
-                    ss << "x" << i << " = FALSE\n";
-
-                else
-                    ss << "x" << i << " = UNASSIGNED\n";
-            }
-        }
-        else {
-            ss << "UNSATISFIABLE\n";
+            out += "\n";
         }
 
-        ss << "\n";
-        ss << "Decisions: " << decisions << "\n";
-        ss << "Propagations: " << propagations << "\n";
-        ss << "Time: " << timeMs << " ms\n";
-
-        return ss.str();
+        return out;
     }
 };
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_gravisat_shield_MainActivity_solveSAT(
-        JNIEnv* env,
-        jobject,
-        jstring input) {
+Java_com_gravisat_app_MainActivity_solveSAT(
+        JNIEnv *env,
+        jobject /* this */,
+        jstring inputText) {
 
-    const char* raw = env->GetStringUTFChars(input, 0);
+    const char *raw =
+            env->GetStringUTFChars(inputText, 0);
 
-    std::string cnf(raw);
+    std::string dimacs(raw);
 
-    env->ReleaseStringUTFChars(input, raw);
+    env->ReleaseStringUTFChars(inputText, raw);
 
-    std::stringstream ss(cnf);
+    GraviSAT solver;
 
-    std::string line;
+    solver.parseDIMACS(dimacs);
 
-    int vars = 0;
-    int clauses = 0;
-
-    GraviSAT* solver = nullptr;
-
-    while (std::getline(ss, line)) {
-
-        if (line.empty())
-            continue;
-
-        if (line[0] == 'c')
-            continue;
-
-        if (line[0] == 'p') {
-
-            std::stringstream header(line);
-
-            std::string tmp;
-
-            header >> tmp;
-            header >> tmp;
-            header >> vars;
-            header >> clauses;
-
-            solver = new GraviSAT(vars);
-
-            continue;
-        }
-
-        if (!solver)
-            continue;
-
-        std::stringstream clauseStream(line);
-
-        int lit;
-
-        std::vector<int> clause;
-
-        while (clauseStream >> lit) {
-
-            if (lit == 0)
-                break;
-
-            clause.push_back(lit);
-        }
-
-        if (!clause.empty())
-            solver->addClause(clause);
-    }
-
-    if (!solver) {
-        return env->NewStringUTF("Invalid DIMACS CNF");
-    }
-
-    std::string result = solver->solve();
-
-    delete solver;
+    std::string result = solver.solveSAT();
 
     return env->NewStringUTF(result.c_str());
 }

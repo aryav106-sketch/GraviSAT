@@ -1,39 +1,75 @@
-#ifndef GRAVISAT_SOLVER_STATE_H
-#define GRAVISAT_SOLVER_STATE_H
+#pragma once
 
 #include <vector>
-#include <cstdint>
+#include <queue>
+#include <cmath>
+
+struct Clause {
+    std::vector<int> lits;
+
+    bool learnt = false;
+
+    float activity = 0.0f;
+};
 
 struct Variable {
 
-    int value;
-    bool seen;
+    // -1 = unassigned
+    // 0 = false
+    // 1 = true
+    int value = -1;
 
-    Variable() {
-        value = -1;
-        seen = false;
-    }
+    int level = 0;
+
+    Clause* reason = nullptr;
+
+    float activity = 0.0f;
+
+    bool seen = false;
+
+    int polarity = 1;
+};
+
+struct TrailEntry {
+
+    int lit = 0;
+
+    int level = 0;
+
+    Clause* reason = nullptr;
 };
 
 struct SolverState {
 
-    int vars;
-    int clauses;
+    // VARIABLES
+    std::vector<Variable> vars;
 
-    int currentLevel;
+    // CLAUSES
+    std::vector<Clause> clauses;
 
-    std::vector<Variable> vars_data;
+    // ASSIGNMENT TRAIL
+    std::vector<TrailEntry> trail;
 
-    std::vector<int> assignment;
-    std::vector<int> trail;
-    std::vector<int> decision_level;
+    // PROPAGATION
+    std::queue<int> propagationQueue;
 
-    SolverState() {
+    // WATCH LITERALS
+    std::vector<std::vector<int>> watchLists;
 
-        vars = 0;
-        clauses = 0;
-        currentLevel = 0;
-    }
+    // DECISION LEVEL
+    int currentLevel = 0;
+
+    // STATISTICS
+    int conflicts = 0;
+
+    int decisions = 0;
+
+    int propagations = 0;
+
+    int restarts = 0;
+
+    // VSIDS
+    float varDecay = 0.95f;
+
+    float clauseDecay = 0.999f;
 };
-
-#endif

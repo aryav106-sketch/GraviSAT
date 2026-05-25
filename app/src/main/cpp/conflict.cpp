@@ -1,11 +1,9 @@
-#include "solver_state.h"
+#include "solver.h"
 
-void analyzeConflict(SolverState& s) {
+void clearSeenFlags(SolverState& s) {
 
-    for (size_t i = 0; i < s.vars_data.size(); i++) {
+    for (size_t i = 0; i < s.vars.size(); i++) {
 
-        s.vars_data[i].seen = false;
+        s.vars[i].seen = false;
     }
-
-    s.currentLevel++;
 }

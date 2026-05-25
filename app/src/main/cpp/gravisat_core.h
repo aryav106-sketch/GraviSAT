@@ -17,7 +17,6 @@ public:
     void reset();
 
     std::string getResult();
-
 };
 
 #endif

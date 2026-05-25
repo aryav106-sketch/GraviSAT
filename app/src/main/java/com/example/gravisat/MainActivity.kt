@@ -1,20 +1,13 @@
 package com.example.gravisat
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.appcompat.app.AppCompatActivity
 
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-
-import kotlinx.coroutines.*
-import androidx.compose.ui.text.font.FontFamily
-
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     companion object {
 
@@ -33,161 +26,61 @@ class MainActivity : ComponentActivity() {
     ) {
 
         super.onCreate(
-            savedInstanceState
+            savedInstanceState)
+
+        setContentView(
+            R.layout.activity_main)
+
+        val inputCNF =
+            findViewById<EditText>(
+                R.id.inputCNF)
+
+        val solveButton =
+            findViewById<Button>(
+                R.id.solveButton)
+
+        val resultText =
+            findViewById<TextView>(
+                R.id.resultText)
+
+        inputCNF.setText(
+
+            "p cnf 2 2\n" +
+            "1 2 0\n" +
+            "-1 2 0"
         )
 
-        setContent {
+        solveButton.setOnClickListener {
 
-            MaterialTheme {
+            resultText.text =
+                "Solving..."
 
-                SolverScreen(
-                    solveNative = ::solveSAT
-                )
-            }
-        }
-    }
-}
+            Thread {
 
-@Composable
-fun SolverScreen(
-    solveNative: (String) -> String
-) {
-
-    var cnfText by remember {
-
-        mutableStateOf(
-            "p cnf 2 2\n1 2 0\n-1 2 0"
-        )
-    }
-
-    var resultText by remember {
-
-        mutableStateOf("")
-    }
-
-    var solving by remember {
-
-        mutableStateOf(false)
-    }
-
-    val scope =
-        rememberCoroutineScope()
-
-    Column(
-
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-
-    ) {
-
-        Text(
-
-            text = "GraviSAT PRIME",
-
-            style =
-                MaterialTheme
-                    .typography
-                    .headlineMedium
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(16.dp)
-        )
-
-        OutlinedTextField(
-
-            value = cnfText,
-
-            onValueChange = {
-
-                cnfText = it
-            },
-
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(240.dp),
-
-            label = {
-
-                Text("DIMACS CNF")
-            },
-
-            textStyle =
-                LocalTextStyle.current.copy(
-                    fontFamily =
-                        FontFamily.Monospace
-                )
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(16.dp)
-        )
-
-        Button(
-
-            onClick = {
-
-                solving = true
-
-                resultText =
-                    "Solving..."
-
-                scope.launch(
-
-                    Dispatchers.Default
-
-                ) {
+                try {
 
                     val result =
-                        solveNative(
-                            cnfText
+                        solveSAT(
+                            inputCNF.text
+                                .toString()
                         )
 
-                    withContext(
-                        Dispatchers.Main
-                    ) {
+                    runOnUiThread {
 
-                        resultText =
+                        resultText.text =
                             result
+                    }
 
-                        solving =
-                            false
+                } catch (e: Exception) {
+
+                    runOnUiThread {
+
+                        resultText.text =
+                            "ERROR:\n${e.message}"
                     }
                 }
-            },
 
-            enabled = !solving
-
-        ) {
-
-            Text(
-
-                if (solving)
-                    "Running..."
-                else
-                    "Solve"
-            )
+            }.start()
         }
-
-        Spacer(
-            modifier =
-                Modifier.height(16.dp)
-        )
-
-        Text(
-
-            text = resultText,
-
-            style =
-                MaterialTheme
-                    .typography
-                    .bodyMedium,
-
-            fontFamily =
-                FontFamily.Monospace
-        )
     }
 }

@@ -2,19 +2,17 @@
 #define GRAVISAT_CORE_H
 
 #include <string>
-#include "solver_state.h"
+#include "solver.h"
 
 class GraviSATCore {
 
-public:
+private:
 
     SolverState state;
 
+public:
+
     GraviSATCore();
-
-    bool solve();
-
-    void reset();
 
     std::string getResult();
 };

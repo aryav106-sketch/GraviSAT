@@ -1,32 +1,21 @@
-#include "gravisat_core.h"
+#include "solver.h"
 
-GraviSATCore::GraviSATCore() {
+void initSolver(SolverState& state) {
 
-    reset();
-}
+    state.vars.clear();
+    state.clauses.clear();
 
-void GraviSATCore::reset() {
-
-    state.vars = 0;
-    state.clauses = 0;
-    state.currentLevel = 0;
-
-    state.assignment.clear();
     state.trail.clear();
-    state.decision_level.clear();
-    state.vars_data.clear();
-}
+    state.watchLists.clear();
 
-bool GraviSATCore::solve() {
-
-    return true;
-}
-
-std::string GraviSATCore::getResult() {
-
-    if (solve()) {
-        return "SATISFIABLE";
+    while (!state.propagationQueue.empty()) {
+        state.propagationQueue.pop();
     }
 
-    return "UNSATISFIABLE";
+    state.conflicts = 0;
+    state.decisions = 0;
+    state.restarts = 0;
+
+    state.varDecay = 0.95f;
+    state.clauseDecay = 0.999f;
 }

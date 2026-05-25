@@ -1,12 +1,13 @@
 #include <jni.h>
 #include <string>
+
 #include "gravisat_core.h"
 
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_example_gravisat_MainActivity_solveSAT(
         JNIEnv* env,
-        jobject /* this */) {
+        jobject thiz) {
 
     GraviSATCore solver;
 

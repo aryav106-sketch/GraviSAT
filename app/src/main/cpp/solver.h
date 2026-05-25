@@ -1,49 +1,60 @@
-#ifndef GRAVISAT_SOLVER_H
-#define GRAVISAT_SOLVER_H
+#ifndef SOLVER_H
+#define SOLVER_H
 
 #include <vector>
-#include <string>
+#include <queue>
+#include <cmath>
+
+struct Clause;
+
+struct Variable {
+
+    int value = -1;
+
+    int level = 0;
+
+    float activity = 0.0f;
+
+    bool seen = false;
+
+    Clause* reason = nullptr;
+};
+
+struct TrailEntry {
+
+    int lit;
+};
 
 struct Clause {
 
-    std::vector<int> literals;
+    std::vector<int> lits;
 
-    int watch1;
-    int watch2;
+    float activity = 0.0f;
+
+    bool learnt = false;
 };
 
-class Solver {
+struct SolverState {
 
-public:
+    std::vector<Variable> vars;
 
-    Solver();
+    std::vector<Clause> clauses;
 
-    bool solve(const std::string& cnf);
+    std::vector<TrailEntry> trail;
 
-    std::string getSolution();
+    std::vector<std::vector<int>> watchLists;
 
-private:
+    std::queue<int> propagationQueue;
 
-    bool parseCNF(const std::string& cnf);
+    int conflicts = 0;
 
-    bool dpll();
+    int decisions = 0;
 
-    bool propagate();
+    int restarts = 0;
 
-    bool hasConflict();
+    float varDecay = 0.95f;
 
-    bool allSatisfied();
-
-    int chooseVariable();
-
-private:
-
-    int variables;
-    int clauses;
-
-    std::vector<Clause> clauseDatabase;
-
-    std::vector<int> assignment;
+    float clauseDecay = 0.999f;
 };
 
 #endif

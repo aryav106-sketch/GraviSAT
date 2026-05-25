@@ -1,65 +1,45 @@
 #include "solver_state.h"
 
-static inline int litIndex(int lit) {
+#include <cmath>
 
-    int v = abs(lit);
-
-    return lit > 0
-        ? (v << 1)
-        : ((v << 1) ^ 1);
-}
-
-static inline bool isTrue(
+static int literalValue(
     SolverState& s,
     int lit) {
 
-    int v = abs(lit);
+    int v = std::abs(lit);
 
-    int val =
-        s.vars[v].value;
+    if (v >= s.vars.size()) {
+        return -1;
+    }
 
-    if (val == -1)
-        return false;
+    int val = s.vars[v].value;
 
-    return lit > 0
-        ? val == 1
-        : val == 0;
+    if (val == -1) {
+        return -1;
+    }
+
+    if (lit > 0) {
+        return val;
+    }
+
+    return 1 - val;
 }
 
-static inline bool isFalse(
-    SolverState& s,
-    int lit) {
-
-    int v = abs(lit);
-
-    int val =
-        s.vars[v].value;
-
-    if (val == -1)
-        return false;
-
-    return lit > 0
-        ? val == 0
-        : val == 1;
-}
-
-static inline bool enqueue(
+bool assignLiteral(
     SolverState& s,
     int lit,
-    int reason) {
+    Clause* reason) {
 
-    int v = abs(lit);
+    int v = std::abs(lit);
 
     int assign =
-        lit > 0 ? 1 : 0;
+        (lit > 0) ? 1 : 0;
 
     if (s.vars[v].value != -1) {
-
         return s.vars[v].value == assign;
     }
 
-    s.vars[v].value =
-        assign;
+    s.vars[v].value = assign;
 
     s.vars[v].level =
         s.currentLevel;
@@ -78,195 +58,59 @@ static inline bool enqueue(
     return true;
 }
 
-static inline void addWatch(
-    SolverState& s,
-    int lit,
-    int clauseIndex,
-    int blocker) {
-
-    int idx =
-        litIndex(lit);
-
-    if (idx >= s.watchLists.size()) {
-
-        s.watchLists.resize(
-            idx + 1);
-    }
-
-    s.watchLists[idx]
-        .push_back({
-            clauseIndex,
-            blocker
-        });
-}
-
-void initializeWatchers(
-    SolverState& s) {
-
-    s.watchLists.clear();
-
-    for (int i = 0;
-         i < s.clauses.size();
-         i++) {
-
-        Clause& c =
-            s.clauses[i];
-
-        if (c.removed)
-            continue;
-
-        if (c.lits.empty())
-            continue;
-
-        if (c.lits.size() == 1) {
-
-            addWatch(
-                s,
-                c.lits[0],
-                i,
-                c.lits[0]);
-
-            continue;
-        }
-
-        c.watch1 = 0;
-        c.watch2 = 1;
-
-        addWatch(
-            s,
-            c.lits[0],
-            i,
-            c.lits[1]);
-
-        addWatch(
-            s,
-            c.lits[1],
-            i,
-            c.lits[0]);
-    }
-}
-
 Clause* propagate(
     SolverState& s) {
 
-    while (
-        !s.propagationQueue.empty()) {
+    while (!s.propagationQueue.empty()) {
 
         int lit =
             s.propagationQueue.front();
 
         s.propagationQueue.pop();
 
-        int idx =
-            litIndex(-lit);
+        for (auto& c : s.clauses) {
 
-        if (idx < 0 ||
-            idx >= s.watchLists.size()) {
+            bool satisfied = false;
 
-            continue;
-        }
+            int unassigned = 0;
 
-        auto& watches =
-            s.watchLists[idx];
+            int lastLit = 0;
 
-        size_t writePos = 0;
+            for (int x : c.lits) {
 
-        for (size_t i = 0;
-             i < watches.size();
-             i++) {
+                int val =
+                    literalValue(s, x);
 
-            Watcher w =
-                watches[i];
-
-            Clause& c =
-                s.clauses[
-                    w.clauseIndex
-                ];
-
-            if (c.removed)
-                continue;
-
-            int falseWatch =
-                c.lits[c.watch1] == -lit
-                ? c.watch1
-                : c.watch2;
-
-            int otherWatch =
-                falseWatch == c.watch1
-                ? c.watch2
-                : c.watch1;
-
-            int otherLit =
-                c.lits[otherWatch];
-
-            if (isTrue(
-                    s,
-                    otherLit)) {
-
-                watches[writePos++] = w;
-
-                continue;
-            }
-
-            bool found = false;
-
-            for (int k = 0;
-                 k < c.lits.size();
-                 k++) {
-
-                if (k == c.watch1 ||
-                    k == c.watch2)
-                    continue;
-
-                int candidate =
-                    c.lits[k];
-
-                if (!isFalse(
-                        s,
-                        candidate)) {
-
-                    if (falseWatch ==
-                        c.watch1)
-                        c.watch1 = k;
-                    else
-                        c.watch2 = k;
-
-                    addWatch(
-                        s,
-                        candidate,
-                        w.clauseIndex,
-                        otherLit);
-
-                    found = true;
-
+                if (val == 1) {
+                    satisfied = true;
                     break;
+                }
+
+                if (val == -1) {
+                    unassigned++;
+                    lastLit = x;
                 }
             }
 
-            if (found)
+            if (satisfied) {
                 continue;
+            }
 
-            watches[writePos++] = w;
-
-            if (isFalse(
-                    s,
-                    otherLit)) {
-
+            if (unassigned == 0) {
                 return &c;
             }
 
-            if (!enqueue(
-                    s,
-                    otherLit,
-                    w.clauseIndex)) {
+            if (unassigned == 1) {
 
-                return &c;
+                if (!assignLiteral(
+                        s,
+                        lastLit,
+                        &c)) {
+
+                    return &c;
+                }
             }
-
-            s.propagations++;
         }
-
-        watches.resize(writePos);
     }
 
     return nullptr;

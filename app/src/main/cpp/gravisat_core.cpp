@@ -1,13 +1,30 @@
-#include "gravisat_core.h"
+#include "solver.h"
 
-GraviSATCore::GraviSATCore() {
+class GraviSATCore {
+public:
 
-    state.conflicts = 0;
+    SolverState state;
 
-    state.decisions = 0;
-}
+    GraviSATCore() {
 
-std::string GraviSATCore::getResult() {
+        state.vars.clear();
+        state.clauses.clear();
+        state.trail.clear();
+        state.watchLists.clear();
 
-    return "GraviSAT Native Engine Running";
-}
+        while (!state.propagationQueue.empty()) {
+            state.propagationQueue.pop();
+        }
+
+        state.conflicts = 0;
+        state.decisions = 0;
+        state.restarts = 0;
+
+        state.currentLevel = 0;
+    }
+
+    int getResult() {
+
+        return 777;
+    }
+};

@@ -1,9 +1,5 @@
 #include "solver.h"
 
-void clearSeenFlags(SolverState& s) {
+void clearConflictFlags(SolverState& state) {
 
-    for (size_t i = 0; i < s.vars.size(); i++) {
-
-        s.vars[i].seen = false;
-    }
 }
